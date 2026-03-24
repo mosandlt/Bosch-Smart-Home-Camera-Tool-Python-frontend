@@ -211,9 +211,13 @@ The NiceGUI server serves the HLS segments, and hls.js in the browser plays them
 
 ---
 
-## Related
+## Related Projects
 
-- [Bosch Smart Home Camera Tool — Python CLI](../Bosch-Smart-Home-Camera-Tool-Python/) — the existing CLI tool (API logic lives here)
-- [Bosch Smart Home Camera Tool — Home Assistant](../Bosch-Smart-Home-Camera-Tool-HomeAssistant/) — HA custom integration
+- [Bosch Smart Home Camera — Python CLI Tool](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python) — standalone CLI with full API access, live stream, RCP protocol, FCM push
+- [Bosch Smart Home Camera — Home Assistant Integration](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-HomeAssistant) — custom HA integration with live video, sensors, switches, alerts
+
+## References
+
 - [NiceGUI Documentation](https://nicegui.io/documentation)
 - [hls.js Documentation](https://github.com/video-dev/hls.js/)
+- [Bosch SHC API Issue #63](https://github.com/BoschSmartHome/bosch-shc-api-docs/issues/63) — community discussion on camera API
