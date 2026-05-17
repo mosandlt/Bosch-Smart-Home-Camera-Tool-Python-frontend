@@ -3,9 +3,9 @@
 > Desktop & mobile web UI for Bosch Smart Home cameras, built with NiceGUI.
 > Replaces the official iOS/Android app with a browser-based interface.
 
-> **This is a concept / proof-of-concept.** The architecture, feature roadmap, and technical approach are documented below. No code has been written yet — this README serves as the design document.
+> **Status: Phase 1 implemented (v0.1.0-alpha)** — dashboard + camera detail + settings pages, CLI-bridge import pattern, smoke tests. Phase 2 (live stream) and Phase 3 (events + auth) are next.
 >
-> **Interested? Let me know!** Open an [issue](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend/issues) or start a [discussion](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend/discussions) if you'd like to see this built. Feature requests, ideas, and pull requests are welcome. If there is enough community interest, I will prioritize development.
+> **Interested? Let me know!** Open an [issue](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend/issues) or start a [discussion](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend/discussions). Feature requests, ideas, and pull requests are welcome.
 
 ---
 
@@ -196,6 +196,72 @@ ffmpeg -rtsp_transport tcp -tls_verify 0 \
 The NiceGUI server serves the HLS segments, and hls.js in the browser plays them with ~3-5s latency.
 
 **Proxy session refresh:** The Bosch proxy hash expires after ~60s. The server must call `PUT /connection` periodically to get a fresh hash and restart FFmpeg with the new URL.
+
+---
+
+## Installation
+
+**Prerequisites:**
+- Python 3.10+
+- [Bosch Smart Home Camera Python CLI](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python) cloned as a sibling directory
+- A valid `bosch_config.json` with bearer token (created by first-run wizard in the CLI)
+
+```bash
+# Clone this repo (as sibling to the Python CLI repo)
+git clone https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend
+
+# Create venv and install dependencies
+cd Bosch-Smart-Home-Camera-Tool-Python-frontend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+The frontend auto-discovers the CLI repo in the sibling directory. Override with:
+```bash
+export BOSCH_CAMERA_CLI_PATH=/path/to/Bosch-Smart-Home-Camera-Tool-Python
+```
+
+## Usage
+
+```bash
+# Start on localhost:8080 (default)
+python3 -m bosch_camera_frontend.app
+
+# Custom port + config path
+python3 -m bosch_camera_frontend.app --port 8081 --config /path/to/bosch_config.json
+
+# Dev mode with hot-reload
+python3 -m bosch_camera_frontend.app --reload
+
+# Custom CLI repo path
+python3 -m bosch_camera_frontend.app --cli-path /path/to/Bosch-Smart-Home-Camera-Tool-Python
+```
+
+Open http://localhost:8080 in your browser. The dashboard shows all cameras from your config.
+
+**Security note:** Default binds to `127.0.0.1` (localhost only). Do NOT expose to the network without authentication (Phase 3 feature).
+
+---
+
+## Migration to Phase 2/3
+
+### Phase 2 — Live Video + Async (next milestone)
+- [ ] go2rtc subprocess manager (RTSPS → HLS segments)
+- [ ] HlsPlayer component fully wired (no-go2rtc prompt → real player)
+- [ ] Async snapshot refresh (non-blocking via `asyncio.to_thread`)
+- [ ] Pan slider wired to Bosch `cmd_pan` equivalent
+- [ ] Light toggle + notifications toggle wired to live API
+
+### Phase 3 — Events, Auth, Real-Time
+- [ ] FCM push listener background task (reuse CLI `_watch_fcm_push`)
+- [ ] Real-time event feed in camera detail via NiceGUI WebSocket
+- [ ] HTTP Basic Auth middleware (env-var password)
+- [ ] Random `storage_secret` generated at first run
+- [ ] Event detail view: snapshot + clip download
+
+### Phase 4+ — Advanced Features
+See full roadmap in [Planned Features](#planned-features-mapped-from-ios-app-v2112).
 
 ---
 
