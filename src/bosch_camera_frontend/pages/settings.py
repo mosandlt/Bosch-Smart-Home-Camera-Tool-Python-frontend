@@ -108,14 +108,14 @@ async def settings_page() -> None:
             current_lang = (
                 cli_bridge.detect_lang(cfg) if cfg else "en"
             )
-
-            lang_options = [
-                {"label": label, "value": code}
-                for code, label in _LANG_LABELS.items()
-            ]
+            # NiceGUI 2.x select with dict options: {code: label}. The
+            # list-of-{label,value} form is NiceGUI 3+ and raises
+            # ValueError on 2.x.
+            if current_lang not in _LANG_LABELS:
+                current_lang = "en"
 
             lang_select = ui.select(
-                options=lang_options,
+                options=_LANG_LABELS,
                 value=current_lang,
                 label="UI Language",
                 on_change=lambda e: _save_language(e.value),
