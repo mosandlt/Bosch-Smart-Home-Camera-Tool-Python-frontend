@@ -34,21 +34,31 @@ def _build_error_state(message: str) -> None:
 async def dashboard_page() -> None:
     """Main dashboard — camera overview."""
     # Shared state stored per NiceGUI client session via app.storage.client
-    cfg = app.storage.client.get("cfg")
-    token = app.storage.client.get("token")
+    cfg = app.storage.general.get("cfg")
+    token = app.storage.general.get("token")
 
-    ui.page_title("Bosch Camera Dashboard")
+    ui.page_title("Bosch Camera")
 
-    with ui.header().classes("items-center justify-between px-4"):
-        ui.label("Bosch Smart Camera").classes("text-white font-bold text-lg")
-        with ui.row().classes("gap-2"):
-            # TODO: use t("nav.settings") once CLI key confirmed
-            ui.button(
-                "Settings", icon="settings", on_click=lambda: ui.navigate.to("/settings")
-            ).props("flat color=white dense")
+    # Body background — light neutral, HA/Apple-like
+    ui.add_head_html(
+        '<style>body{background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'
+        '"SF Pro Text","Segoe UI",Roboto,sans-serif;}</style>'
+    )
 
-    # Main content
-    with ui.column().classes("w-full p-4 gap-4"):
+    # Translucent header bar, Apple-style
+    with ui.header(elevated=False).classes(
+        "items-center justify-between px-6 py-3"
+    ).style("background:rgba(255,255,255,0.85);backdrop-filter:blur(20px);"
+            "border-bottom:1px solid rgba(0,0,0,0.06);color:#111;"):
+        with ui.row().classes("items-center gap-2"):
+            ui.icon("videocam", color="primary").classes("text-2xl")
+            ui.label("Bosch Smart Camera").classes("font-semibold text-lg text-gray-900")
+        with ui.row().classes("gap-1"):
+            ui.button(icon="settings", on_click=lambda: ui.navigate.to("/settings")) \
+                .props("flat round dense color=grey-8").tooltip("Settings")
+
+    # Main content — generous padding, max-width for desktop comfort
+    with ui.column().classes("w-full max-w-7xl mx-auto px-6 py-8 gap-6"):
 
         if not cfg or not token:
             _build_error_state(
@@ -56,6 +66,11 @@ async def dashboard_page() -> None:
                 "Restart the app with --config path/to/bosch_config.json"
             )
             return
+
+        # Section heading
+        with ui.row().classes("items-baseline justify-between w-full"):
+            ui.label("Kameras").classes("text-2xl font-semibold text-gray-900")
+            ui.label("Live status & quick controls").classes("text-sm text-gray-500")
 
         # Camera grid
         cameras: dict = {}
@@ -67,18 +82,16 @@ async def dashboard_page() -> None:
             return
 
         if not cameras:
-            with ui.card().classes("p-4 w-full text-center"):
+            with ui.card().classes("rounded-2xl shadow-md p-8 w-full text-center bg-white"):
                 ui.icon("videocam_off", size="3rem", color="grey")
-                # TODO: use t("cmd.status.no_cameras") if key exists
-                ui.label("No cameras found in config.").classes("text-gray-500")
+                ui.label("No cameras found.").classes("text-gray-500 mt-2")
                 ui.label(
                     'Run "python3 bosch_camera.py rescan" to discover cameras.'
                 ).classes("text-xs text-gray-400 mt-1")
             return
 
-        # Responsive grid: 1 col on mobile, 2 on md, 3 on xl
         with ui.grid(columns=1).classes(
-            "w-full sm:grid-cols-2 lg:grid-cols-3 gap-4"
+            "w-full sm:grid-cols-2 lg:grid-cols-3 gap-5"
         ):
             for cam_name, cam_info in cameras.items():
                 CameraCard(
@@ -88,21 +101,14 @@ async def dashboard_page() -> None:
                     on_click=_navigate_to_camera,
                 )
 
-    # Bottom toolbar
-    with ui.footer().classes("px-4 py-2 gap-2 justify-end"):
-        ui.button(
-            "Reload Cameras",
-            icon="refresh",
-            on_click=lambda: ui.navigate.to("/"),
-        ).props("flat dense")
-        ui.button(
-            "Settings",
-            icon="settings",
-            on_click=lambda: ui.navigate.to("/settings"),
-        ).props("flat dense")
-        # TODO Phase 2: Logs page
-        ui.button(
-            "Logs",
-            icon="article",
-            on_click=lambda: ui.notify("Log viewer coming in Phase 2", color="info"),
-        ).props("flat dense")
+    # Footer — translucent like the header, minimal
+    with ui.footer(elevated=False).classes(
+        "items-center justify-center px-6 py-3 gap-4"
+    ).style("background:rgba(255,255,255,0.85);backdrop-filter:blur(20px);"
+            "border-top:1px solid rgba(0,0,0,0.06);color:#666;"):
+        ui.button("Reload", icon="refresh",
+                  on_click=lambda: ui.navigate.to("/")) \
+            .props("flat dense color=grey-7")
+        ui.button("Settings", icon="settings",
+                  on_click=lambda: ui.navigate.to("/settings")) \
+            .props("flat dense color=grey-7")

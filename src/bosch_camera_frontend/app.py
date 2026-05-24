@@ -143,24 +143,17 @@ def main(argv: list[str] | None = None) -> None:
     @nicegui_app.on_startup
     async def _on_startup() -> None:
         logger.info("Bosch Camera Frontend starting on %s:%d", args.host, args.port)
+        # Process-wide storage works without per-request client context, which
+        # is what `app.storage.client` would require (only populated inside a
+        # @ui.page handler, not from FastAPI middleware).
+        nicegui_app.storage.general["cfg"] = cfg
+        nicegui_app.storage.general["token"] = token
+        nicegui_app.storage.general["config_path"] = _config_path or "(CLI default)"
 
     # Register pages by importing them (side effect: @ui.page decorators register routes)
     import bosch_camera_frontend.pages.dashboard  # noqa: F401
     import bosch_camera_frontend.pages.camera_detail  # noqa: F401
     import bosch_camera_frontend.pages.settings  # noqa: F401
-
-    # Middleware: inject cfg + token into client storage for each new connection
-    @ui.middleware
-    async def _inject_cfg(request, call_next):
-        # NiceGUI middleware signature: (request, call_next)
-        # We piggyback on the request cycle to ensure client storage is populated.
-        # app.storage.client is per-browser-tab and auto-cleared on disconnect.
-        from nicegui import app as _app
-        if not _app.storage.client.get("cfg"):
-            _app.storage.client["cfg"] = cfg
-            _app.storage.client["token"] = token
-            _app.storage.client["config_path"] = _config_path or "(CLI default)"
-        return await call_next(request)
 
     # 4. Start NiceGUI server
     ui.run(

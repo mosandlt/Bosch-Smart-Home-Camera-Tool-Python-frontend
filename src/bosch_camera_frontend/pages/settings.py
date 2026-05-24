@@ -19,8 +19,8 @@ from bosch_camera_frontend.adapters import cli_bridge
 @ui.page("/settings")
 async def settings_page() -> None:
     """Settings and token status page."""
-    cfg = app.storage.client.get("cfg")
-    config_path = app.storage.client.get("config_path", "bosch_config.json")
+    cfg = app.storage.general.get("cfg")
+    config_path = app.storage.general.get("config_path", "bosch_config.json")
 
     ui.page_title("Settings — Bosch Camera Frontend")
 

@@ -56,54 +56,72 @@ class CameraCard(ui.card):
         self._snap_bytes: bytes | None = None
         self._last_snap_ts: float = 0.0
         self._privacy_on: bool = False
+        self._online: bool = False
 
         self._build()
 
     def _build(self) -> None:
+        # HA/Apple-style: rounded-2xl, soft shadow, no Quasar default border,
+        # generous padding. Status communicated via a small colored dot, not a
+        # filled badge — keeps the card calm visually.
+        self.classes("rounded-2xl shadow-md p-0 overflow-hidden bg-white "
+                     "hover:shadow-lg transition-shadow duration-200")
+        self.style("border: none;")
         with self:
-            with ui.row().classes("items-center justify-between w-full"):
-                ui.label(self._cam_info.get("name", "Camera")).classes(
-                    "text-lg font-bold"
-                )
-                self._status_badge = ui.badge("…", color="grey").classes("ml-2")
-
-            # Snapshot thumbnail
+            # Snapshot — full-width 16:9 hero area at the top, no margins.
             self._snapshot_img = ui.image(_PLACEHOLDER_SRC).classes(
-                "w-full rounded mt-2 cursor-pointer"
-            ).style("max-height: 180px; object-fit: cover;")
+                "w-full cursor-pointer"
+            ).style("aspect-ratio: 16/9; object-fit: cover; "
+                    "background-color: #f1f3f5;")
             if self._on_click:
                 self._snapshot_img.on("click", lambda: self._on_click(self._cam_info))
 
-            # Info row
-            with ui.row().classes("text-xs text-gray-500 mt-1 gap-2"):
-                model = self._cam_info.get("model", "")
-                ui.label(model)
-                fw = self._cam_info.get("firmware", "")
-                if fw:
-                    ui.label(f"FW {fw}")
+            # Body — name + status dot + meta + controls. Padded.
+            with ui.column().classes("p-4 gap-2 w-full"):
+                with ui.row().classes("items-center justify-between w-full"):
+                    with ui.row().classes("items-center gap-2"):
+                        self._status_dot = ui.html(
+                            '<div style="width:10px;height:10px;border-radius:50%;'
+                            'background:#9ca3af;"></div>'
+                        )
+                        ui.label(self._cam_info.get("name", "Camera")).classes(
+                            "text-base font-semibold text-gray-900"
+                        )
+                    self._status_badge = ui.label("…").classes(
+                        "text-xs text-gray-400 tracking-wide uppercase"
+                    )
 
-            # Controls row
-            with ui.row().classes("items-center mt-2 gap-2"):
-                # Privacy toggle
-                self._privacy_toggle = ui.switch(
-                    # TODO: use t("cmd.privacy.label") once CLI key confirmed
-                    "Privacy",
-                    on_change=self._handle_privacy_toggle,
-                ).props("dense")
-                ui.tooltip("Enable privacy mode (disables camera feed)")
+                # Subtitle: model + firmware
+                with ui.row().classes("items-center gap-2 -mt-1"):
+                    ui.label(self._cam_info.get("model", "")).classes(
+                        "text-xs text-gray-500"
+                    )
+                    fw = self._cam_info.get("firmware", "")
+                    if fw:
+                        ui.label("·").classes("text-xs text-gray-400")
+                        ui.label(f"FW {fw}").classes("text-xs text-gray-500")
 
-                # Manual snapshot refresh
-                ui.button(
-                    icon="refresh",
-                    on_click=self._refresh_snapshot,
-                ).props("flat dense").tooltip("Refresh snapshot now")
-
-                # Navigate to detail
-                if self._on_click:
-                    ui.button(
-                        icon="open_in_new",
-                        on_click=lambda: self._on_click(self._cam_info),
-                    ).props("flat dense").tooltip("Open camera detail")
+                # Divider + controls
+                ui.separator().classes("my-2 opacity-30")
+                with ui.row().classes("items-center justify-between w-full"):
+                    # Privacy switch — iOS-style pill
+                    with ui.row().classes("items-center gap-2"):
+                        self._privacy_toggle = ui.switch(
+                            on_change=self._handle_privacy_toggle,
+                        ).props("color=primary keep-color")
+                        ui.label("Privacy").classes("text-sm text-gray-700")
+                        ui.tooltip("Privacy mode hides the camera feed")
+                    # Right-aligned icon buttons
+                    with ui.row().classes("items-center gap-1"):
+                        ui.button(
+                            icon="refresh",
+                            on_click=self._refresh_snapshot,
+                        ).props("flat round dense color=grey-7").tooltip("Refresh snapshot")
+                        if self._on_click:
+                            ui.button(
+                                icon="arrow_forward_ios",
+                                on_click=lambda: self._on_click(self._cam_info),
+                            ).props("flat round dense color=grey-7").tooltip("Open detail")
 
         # Kick off initial data load
         ui.timer(0.1, self._initial_load, once=True)
@@ -120,21 +138,38 @@ class CameraCard(ui.card):
             session = cli_bridge.make_session(self._token)
             cam_id = self._cam_info.get("id", "")
             result = cli_bridge.api_ping(session, cam_id)
-            if "ONLINE" in result.upper() or result == "pong":
-                self._status_badge.set_text("ONLINE")
-                self._status_badge.props("color=positive")
+            online = "ONLINE" in result.upper() or result == "pong"
+            self._online = online
+            # Disable controls visually + functionally when camera is offline.
+            try:
+                if online:
+                    self._privacy_toggle.enable()
+                else:
+                    self._privacy_toggle.disable()
+            except Exception:
+                pass
+            if online:
+                self._status_badge.set_text("online")
+                self._status_badge.classes(replace="text-xs text-green-600 tracking-wide uppercase")
+                self._set_dot("#22c55e")
             else:
-                self._status_badge.set_text("OFFLINE")
-                self._status_badge.props("color=negative")
+                self._status_badge.set_text("offline")
+                self._status_badge.classes(replace="text-xs text-gray-400 tracking-wide uppercase")
+                self._set_dot("#9ca3af")
 
-            # Update privacy state from live API
             privacy = cli_bridge.get_privacy_mode(session, cam_id)
             if privacy is not None:
                 self._privacy_on = privacy.upper() == "ON"
                 self._privacy_toggle.set_value(self._privacy_on)
-        except Exception as exc:
-            self._status_badge.set_text("ERR")
-            self._status_badge.props("color=warning")
+        except Exception:
+            self._status_badge.set_text("error")
+            self._status_badge.classes(replace="text-xs text-amber-600 tracking-wide uppercase")
+            self._set_dot("#f59e0b")
+
+    def _set_dot(self, color: str) -> None:
+        self._status_dot.set_content(
+            f'<div style="width:10px;height:10px;border-radius:50%;background:{color};"></div>'
+        )
 
     async def _refresh_snapshot(self) -> None:
         """Fetch a fresh snapshot and update the image element."""
@@ -163,7 +198,7 @@ class CameraCard(ui.card):
         try:
             session = cli_bridge.make_session(self._token)
             cam_id = self._cam_info.get("id", "")
-            ok = cli_bridge.set_privacy_mode(session, cam_id, on=new_state)
+            ok, err = cli_bridge.set_privacy_mode(session, cam_id, on=new_state)
             if ok:
                 self._privacy_on = new_state
                 mode = "ON" if new_state else "OFF"
@@ -172,9 +207,8 @@ class CameraCard(ui.card):
                     color="info",
                 )
             else:
-                # Revert toggle on failure
                 self._privacy_toggle.set_value(not new_state)
-                ui.notify("Privacy toggle failed — check token", color="negative")
+                ui.notify(f"Privacy toggle failed: {err}", color="negative")
         except Exception as exc:
             self._privacy_toggle.set_value(not new_state)
             ui.notify(f"Error: {exc}", color="negative")

@@ -45,8 +45,8 @@ async def camera_detail_page(name: str) -> None:
     """Detail view for a single camera."""
     cam_name = unquote(name)
 
-    cfg = app.storage.client.get("cfg")
-    token = app.storage.client.get("token")
+    cfg = app.storage.general.get("cfg")
+    token = app.storage.general.get("token")
 
     ui.page_title(f"Camera — {cam_name}")
 
@@ -164,14 +164,14 @@ async def camera_detail_page(name: str) -> None:
                         privacy_state_label.set_text("Privacy: unavailable")
 
                 async def _toggle_privacy(e) -> None:
-                    ok = cli_bridge.set_privacy_mode(session, cam_id, on=e.value)
+                    ok, err = cli_bridge.set_privacy_mode(session, cam_id, on=e.value)
                     if ok:
                         mode = "ON 🔒" if e.value else "OFF 👁️"
                         privacy_state_label.set_text(f"Privacy: {mode}")
                         ui.notify(f"Privacy {mode}", color="info")
                     else:
                         privacy_switch.set_value(not e.value)
-                        ui.notify("Privacy toggle failed", color="negative")
+                        ui.notify(f"Privacy toggle failed: {err}", color="negative")
 
                 ui.timer(0.2, _load_privacy, once=True)
 

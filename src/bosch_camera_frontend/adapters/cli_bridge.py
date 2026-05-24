@@ -116,7 +116,41 @@ def get_token(cfg: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def get_cameras(cfg: dict, session: "requests.Session") -> dict:
-    return _bc().get_cameras(cfg, session)
+    """Always live from /v11/video_inputs — the cloud is authoritative for
+    names/firmware/mac. Pre-2026-05-24 we returned cfg["cameras"] which hid
+    cloud-side renames and any cameras added since the last `rescan`.
+    Local-only fields (local_ip / creds / download_folder) are preserved
+    across refresh, keyed by camera id.
+    """
+    bc = _bc()
+    cached = cfg.get("cameras", {}) or {}
+    try:
+        r = session.get(f"{bc.CLOUD_API}/v11/video_inputs", timeout=15)
+        if r.status_code != 200:
+            return cached or bc.get_cameras(cfg, session)
+        by_id = {info.get("id"): info for info in cached.values() if info.get("id")}
+        fresh: dict = {}
+        for cam in r.json():
+            cam_id = cam.get("id", "")
+            name = cam.get("title") or cam_id or "unknown"
+            prev = by_id.get(cam_id, {})
+            fresh[name] = {
+                "id": cam_id,
+                "name": name,
+                "model": cam.get("hardwareVersion", "CAMERA"),
+                "firmware": cam.get("firmwareVersion", ""),
+                "mac": cam.get("macAddress", ""),
+                "download_folder": prev.get("download_folder", name),
+                "local_ip": prev.get("local_ip", ""),
+                "local_username": prev.get("local_username", ""),
+                "local_password": prev.get("local_password", ""),
+                "has_light": prev.get("has_light", False),
+                "pan_limit": prev.get("pan_limit", 0),
+            }
+        cfg["cameras"] = fresh
+        return fresh
+    except Exception:
+        return cached or bc.get_cameras(cfg, session)
 
 
 def discover_cameras(cfg: dict, session: "requests.Session") -> dict:
@@ -163,9 +197,14 @@ def snap_from_events(
 
 def set_privacy_mode(
     session: "requests.Session", cam_id: str, on: bool
-) -> bool:
-    """Set privacy mode ON or OFF.  Returns True on success (HTTP 204)."""
-    import requests as req
+) -> tuple[bool, str | None]:
+    """Set privacy mode ON or OFF. Returns (ok, error_reason).
+
+    error_reason is None on success, a short human-readable string on failure
+    (e.g. "Camera offline (444)", "Auth expired (401)"). Pre-2026-05-24 the
+    bool-only return surfaced every non-204 as "check token", which masked the
+    common case of an offline camera.
+    """
     bc = _bc()
     payload = {"privacyMode": "ON" if on else "OFF", "durationInSeconds": None}
     r = session.put(
@@ -173,7 +212,19 @@ def set_privacy_mode(
         json=payload,
         timeout=10,
     )
-    return r.status_code == 204
+    if r.status_code == 204:
+        return True, None
+    try:
+        err = r.json().get("error", "").removeprefix("sh:")
+    except Exception:
+        err = ""
+    if r.status_code == 444 or "camera.unavailable" in err:
+        return False, "Camera offline"
+    if r.status_code == 401:
+        return False, "Auth expired — refresh token"
+    if r.status_code == 403:
+        return False, "Permission denied"
+    return False, f"HTTP {r.status_code} {err or 'unknown error'}"
 
 
 def get_privacy_mode(session: "requests.Session", cam_id: str) -> str | None:
