@@ -143,12 +143,30 @@ def main(argv: list[str] | None = None) -> None:
     @nicegui_app.on_startup
     async def _on_startup() -> None:
         logger.info("Bosch Camera Frontend starting on %s:%d", args.host, args.port)
-        # Process-wide storage works without per-request client context, which
-        # is what `app.storage.client` would require (only populated inside a
-        # @ui.page handler, not from FastAPI middleware).
         nicegui_app.storage.general["cfg"] = cfg
         nicegui_app.storage.general["token"] = token
         nicegui_app.storage.general["config_path"] = _config_path or "(CLI default)"
+
+    def _reload_config_and_token() -> tuple[dict, str] | None:
+        """Re-read bosch_config.json + refresh token. Updates app storage in
+        place so all pages see the new state on next render. Used by the
+        Settings "Reload" button when the user has run `token fix` in a
+        terminal."""
+        try:
+            new_cfg, new_token = _load_config_and_session(args.config)
+            nicegui_app.storage.general["cfg"] = new_cfg
+            nicegui_app.storage.general["token"] = new_token
+            return new_cfg, new_token
+        except SystemExit:
+            return None
+        except Exception as exc:
+            logger.error("Reload failed: %s", exc)
+            return None
+
+    # Expose the reloader so pages can trigger it via app.storage.
+    nicegui_app.storage.general["__reload_fn_name__"] = "reload_config_and_token"
+    import bosch_camera_frontend.adapters.cli_bridge as _br
+    _br.reload_config_and_token = _reload_config_and_token  # type: ignore[attr-defined]
 
     # Register pages by importing them (side effect: @ui.page decorators register routes)
     import bosch_camera_frontend.pages.dashboard  # noqa: F401

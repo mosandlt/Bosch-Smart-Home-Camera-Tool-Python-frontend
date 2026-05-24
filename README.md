@@ -3,7 +3,7 @@
 > Desktop & mobile web UI for Bosch Smart Home cameras, built with NiceGUI.
 > Replaces the official iOS/Android app with a browser-based interface.
 
-> **Status: Phase 1 implemented (v0.1.0-alpha)** — dashboard + camera detail + settings pages, CLI-bridge import pattern, smoke tests. Phase 2 (live stream) and Phase 3 (events + auth) are next.
+> **Status: Phase 1 working e2e (v0.1.1-alpha)** — dashboard, camera detail, settings. Live cloud camera-list (no longer hostage to a stale local config), HA/Apple-style design (rounded-2xl cards, 16:9 hero snapshot, soft shadows, translucent header), structured privacy-toggle error reporting ("Camera offline" / "Auth expired" instead of "check token"), in-app Reload-from-disk button on Settings (after running `python3 bosch_camera.py token fix` in a terminal). Phase 2 (live stream) and Phase 3 (events + auth) are next.
 >
 > **Interested? Let me know!** Open an [issue](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend/issues) or start a [discussion](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend/discussions). Feature requests, ideas, and pull requests are welcome.
 

@@ -54,7 +54,26 @@ async def settings_page() -> None:
 
         # ── Token section ─────────────────────────────────────────────────
         with ui.card().classes("w-full p-4"):
-            ui.label("Token Status").classes("font-semibold text-base mb-2")
+            with ui.row().classes("items-center justify-between w-full mb-2"):
+                ui.label("Token Status").classes("font-semibold text-base")
+
+                def _do_reload() -> None:
+                    reload_fn = getattr(cli_bridge, "reload_config_and_token", None)
+                    if reload_fn is None:
+                        ui.notify("Reload helper not wired up", color="negative")
+                        return
+                    result = reload_fn()
+                    if result is None:
+                        ui.notify("Reload failed — see server log", color="negative")
+                        return
+                    ui.notify("Config + token reloaded", color="positive")
+                    ui.navigate.to("/settings")
+
+                ui.button("Reload from disk", icon="refresh",
+                          on_click=_do_reload) \
+                    .props("outline dense color=primary") \
+                    .tooltip("Re-read bosch_config.json + refresh token "
+                             "(use after running `python3 bosch_camera.py token fix`)")
 
             if cfg:
                 token_status = cli_bridge.check_token_age(cfg)

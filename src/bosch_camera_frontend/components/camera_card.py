@@ -57,6 +57,11 @@ class CameraCard(ui.card):
         self._last_snap_ts: float = 0.0
         self._privacy_on: bool = False
         self._online: bool = False
+        # Suppress on_change while we programmatically sync the toggle from
+        # the server (set_value also fires on_change). Without this guard,
+        # every status refresh would issue a PUT and surface "Camera offline"
+        # for the OFFLINE cams.
+        self._suppress_toggle_event: bool = False
 
         self._build()
 
@@ -160,7 +165,11 @@ class CameraCard(ui.card):
             privacy = cli_bridge.get_privacy_mode(session, cam_id)
             if privacy is not None:
                 self._privacy_on = privacy.upper() == "ON"
-                self._privacy_toggle.set_value(self._privacy_on)
+                self._suppress_toggle_event = True
+                try:
+                    self._privacy_toggle.set_value(self._privacy_on)
+                finally:
+                    self._suppress_toggle_event = False
         except Exception:
             self._status_badge.set_text("error")
             self._status_badge.classes(replace="text-xs text-amber-600 tracking-wide uppercase")
@@ -194,7 +203,18 @@ class CameraCard(ui.card):
 
     async def _handle_privacy_toggle(self, e) -> None:
         """Toggle privacy mode on/off via cloud API."""
+        if self._suppress_toggle_event:
+            return  # Programmatic set_value, not a user click.
         new_state = e.value
+        if not self._online:
+            # Revert visually and surface the truth without a useless PUT.
+            self._suppress_toggle_event = True
+            try:
+                self._privacy_toggle.set_value(not new_state)
+            finally:
+                self._suppress_toggle_event = False
+            ui.notify("Camera is offline — privacy unchanged", color="warning")
+            return
         try:
             session = cli_bridge.make_session(self._token)
             cam_id = self._cam_info.get("id", "")
