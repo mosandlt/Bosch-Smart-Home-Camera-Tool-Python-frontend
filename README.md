@@ -5,6 +5,8 @@
 
 > **Status: Phase 1 working e2e (v0.1.1-alpha)** — dashboard, camera detail, settings. Live cloud camera-list (no longer hostage to a stale local config), HA/Apple-style design (rounded-2xl cards, 16:9 hero snapshot, soft shadows, translucent header), structured privacy-toggle error reporting ("Camera offline" / "Auth expired" instead of "check token"), in-app Reload-from-disk button on Settings (after running `python3 bosch_camera.py token fix` in a terminal). Phase 2 (live stream) and Phase 3 (events + auth) are next.
 >
+> **Engineering:** runs on **NiceGUI 3.12** · cloud I/O is non-blocking (`asyncio.to_thread`) so the UI never freezes during network calls · session secret is generated, never hardcoded · `mypy --strict` clean · **99% test coverage (247 tests)** · CI on Python 3.11–3.13 (`ruff` + `ruff format` + `mypy --strict` + `pytest`).
+>
 > **Interested? Let me know!** Open an [issue](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend/issues) or start a [discussion](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend/discussions). Feature requests, ideas, and pull requests are welcome.
 
 ---
@@ -124,7 +126,7 @@
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| UI framework | [NiceGUI](https://nicegui.io/) 2.x | Python web UI with Tailwind CSS |
+| UI framework | [NiceGUI](https://nicegui.io/) 3.x (≥3.12) | Python web UI with Tailwind CSS |
 | Video player | [hls.js](https://github.com/video-dev/hls.js/) | HLS playback in browser |
 | Transcoder | FFmpeg | RTSPS → HLS segment conversion |
 | API client | `requests` (from existing CLI) | Bosch Cloud API communication |
@@ -134,36 +136,36 @@
 ### Requirements
 
 ```bash
-pip install nicegui requests
-brew install ffmpeg
+pip install -r requirements.txt   # nicegui>=3.12, requests, urllib3, defusedxml
+brew install ffmpeg               # only needed for Phase 2 live video
 ```
 
-Python 3.10+
+Python 3.10+ (CI runs 3.11–3.13). `defusedxml` is pulled in transitively via the
+CLI bridge (`bosch_camera` → `bosch_maintenance`), so it must be installed even
+though the frontend never imports it directly.
 
 ---
 
-## File Structure (planned)
+## File Structure
 
 ```
-python-frontend/
-  main.py                  — NiceGUI app entry point
-  api/
-    bosch_api.py           — async wrapper around bosch_camera.py functions
-    token_manager.py       — OAuth2 token auto-renewal
-    fcm_listener.py        — FCM push notification receiver
-  pages/
-    dashboard.py           — main camera dashboard
-    events.py              — event list & detail view
-    settings.py            — configuration page
-    live.py                — live video player page
-  components/
-    camera_card.py         — camera status card widget
-    event_row.py           — event list row widget
-    video_player.py        — HLS video player component
-    pan_control.py         — pan slider widget
-  static/
-    hls.min.js             — hls.js library
-  README.md                — this file
+Bosch-Smart-Home-Camera-Tool-Python-frontend/
+  src/bosch_camera_frontend/
+    __init__.py            — package + CLI-path injection
+    app.py                 — NiceGUI app entry point (argparse, ui.run)
+    adapters/
+      cli_bridge.py        — typed re-export of bosch_camera.py + async_* twins
+    pages/
+      dashboard.py         — camera overview grid
+      camera_detail.py     — single-camera view (snapshot, controls, events)
+      settings.py          — config / token status / language
+    components/
+      camera_card.py       — camera status card widget
+      hls_player.py         — hls.js video player component (Phase 2 stub)
+  tests/                   — pytest suite (conftest fake-NiceGUI harness, 99% cov)
+  .github/workflows/ci.yml — ruff + ruff format + mypy --strict + pytest
+  requirements.txt
+  pyproject.toml
 ```
 
 ---
@@ -240,7 +242,27 @@ python3 -m bosch_camera_frontend.app --cli-path /path/to/Bosch-Smart-Home-Camera
 
 Open http://localhost:8080 in your browser. The dashboard shows all cameras from your config.
 
-**Security note:** Default binds to `127.0.0.1` (localhost only). Do NOT expose to the network without authentication (Phase 3 feature).
+**Security note:** Default binds to `127.0.0.1` (localhost only). Do NOT expose to the network without authentication (Phase 3 feature). The NiceGUI session cookie is signed with a secret resolved at startup: set `BOSCH_FRONTEND_STORAGE_SECRET` for a stable secret across restarts, otherwise a per-process random secret is generated (sessions reset on restart). No secret is hardcoded in the source.
+
+---
+
+## Development & Testing
+
+```bash
+pip install -e ".[dev]"          # runtime + pytest, pytest-asyncio, pytest-mock
+pip install ruff mypy pytest-cov
+
+ruff check src/ tests/           # lint
+ruff format --check src/ tests/  # formatting
+mypy --strict src/bosch_camera_frontend
+pytest -q --cov=src/bosch_camera_frontend --cov-report=term-missing
+```
+
+- **Tests don't need a browser or network:** `tests/conftest.py` installs a fake
+  NiceGUI and mocks the CLI bridge, so page/component handlers run headless.
+  Coverage is **99% across 247 tests**; fixtures use fake IDs only.
+- **CI** (`.github/workflows/ci.yml`) runs the four gates above on Python
+  3.11–3.13 and checks out the sibling CLI repo so the bridge resolves.
 
 ---
 
@@ -249,7 +271,7 @@ Open http://localhost:8080 in your browser. The dashboard shows all cameras from
 ### Phase 2 — Live Video + Async (next milestone)
 - [ ] go2rtc subprocess manager (RTSPS → HLS segments)
 - [ ] HlsPlayer component fully wired (no-go2rtc prompt → real player)
-- [ ] Async snapshot refresh (non-blocking via `asyncio.to_thread`)
+- [x] Async snapshot refresh (non-blocking via `asyncio.to_thread`) ✅ done in v0.1.1-alpha
 - [ ] Pan slider wired to Bosch `cmd_pan` equivalent
 - [ ] Light toggle + notifications toggle wired to live API
 
@@ -257,7 +279,7 @@ Open http://localhost:8080 in your browser. The dashboard shows all cameras from
 - [ ] FCM push listener background task (reuse CLI `_watch_fcm_push`)
 - [ ] Real-time event feed in camera detail via NiceGUI WebSocket
 - [ ] HTTP Basic Auth middleware (env-var password)
-- [ ] Random `storage_secret` generated at first run
+- [x] Random `storage_secret` generated at first run ✅ done in v0.1.1-alpha (env `BOSCH_FRONTEND_STORAGE_SECRET` or per-process random)
 - [ ] Event detail view: snapshot + clip download
 
 ### Phase 4+ — Advanced Features
