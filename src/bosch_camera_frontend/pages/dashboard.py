@@ -9,13 +9,15 @@ TODO Phase 3: unread event badges on each camera card.
 
 from __future__ import annotations
 
+from typing import Any
+
 from nicegui import app, ui
 
 from bosch_camera_frontend.adapters import cli_bridge
 from bosch_camera_frontend.components.camera_card import CameraCard
 
 
-def _navigate_to_camera(cam_info: dict) -> None:
+def _navigate_to_camera(cam_info: dict[str, Any]) -> None:
     name = cam_info.get("name", "")
     ui.navigate.to(f"/camera/{name}")
 
@@ -73,10 +75,10 @@ async def dashboard_page() -> None:
             ui.label("Live status & quick controls").classes("text-sm text-gray-500")
 
         # Camera grid
-        cameras: dict = {}
+        cameras: dict[str, dict[str, Any]] = {}
         try:
             session = cli_bridge.make_session(token)
-            cameras = cli_bridge.get_cameras(cfg, session)
+            cameras = await cli_bridge.async_get_cameras(cfg, session)
         except Exception as exc:
             _build_error_state(f"Failed to load cameras: {exc}")
             return

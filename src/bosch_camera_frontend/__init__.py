@@ -13,7 +13,8 @@ from __future__ import annotations
 import os
 import sys
 
-__version__ = "0.1.0a0"
+# Keep in sync with pyproject.toml [project].version (released v0.1.1-alpha).
+__version__ = "0.1.1a0"
 
 # ── CLI path resolution ────────────────────────────────────────────────────────
 # The Python CLI repo must be on sys.path for `from bosch_camera import ...` to

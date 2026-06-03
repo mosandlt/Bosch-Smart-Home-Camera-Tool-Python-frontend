@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import datetime
+from typing import Any
 from urllib.parse import unquote
 
 from nicegui import app, ui
@@ -65,7 +66,7 @@ async def camera_detail_page(name: str) -> None:
 
         # Resolve camera info
         try:
-            cam_info = cli_bridge.resolve_cam(cfg, cam_name).get(cam_name)
+            cam_info = (await cli_bridge.async_resolve_cam(cfg, cam_name)).get(cam_name)
         except SystemExit:
             cam_info = None
 
@@ -93,13 +94,13 @@ async def camera_detail_page(name: str) -> None:
         async def load_snapshot() -> None:
             snap_status.set_text("Fetching snapshot…")
             try:
-                data = cli_bridge.snap_from_proxy(
+                data = await cli_bridge.async_snap_from_proxy(
                     cam_info, token, hq=True, cfg=cfg
                 )
                 if not data:
-                    data, method = cli_bridge.snap_from_events(session, cam_info)
+                    data, method = await cli_bridge.async_snap_from_events(session, cam_info)
                     if data:
-                        snap_status.set_text(f"Snapshot via event history")
+                        snap_status.set_text("Snapshot via event history")
                     else:
                         snap_status.set_text("No snapshot available")
                         return
@@ -153,7 +154,7 @@ async def camera_detail_page(name: str) -> None:
                 )
 
                 async def _load_privacy() -> None:
-                    p = cli_bridge.get_privacy_mode(session, cam_id)
+                    p = await cli_bridge.async_get_privacy_mode(session, cam_id)
                     if p is not None:
                         is_on = p.upper() == "ON"
                         privacy_switch.set_value(is_on)
@@ -163,8 +164,8 @@ async def camera_detail_page(name: str) -> None:
                     else:
                         privacy_state_label.set_text("Privacy: unavailable")
 
-                async def _toggle_privacy(e) -> None:
-                    ok, err = cli_bridge.set_privacy_mode(session, cam_id, on=e.value)
+                async def _toggle_privacy(e: Any) -> None:
+                    ok, err = await cli_bridge.async_set_privacy_mode(session, cam_id, on=e.value)
                     if ok:
                         mode = "ON 🔒" if e.value else "OFF 👁️"
                         privacy_state_label.set_text(f"Privacy: {mode}")
@@ -224,7 +225,7 @@ async def camera_detail_page(name: str) -> None:
                 with events_container:
                     events_container.clear()
                     try:
-                        events = cli_bridge.api_get_events(session, cam_id, limit=10)
+                        events = await cli_bridge.async_api_get_events(session, cam_id, limit=10)
                     except Exception as exc:
                         ui.label(f"Could not load events: {exc}").classes(
                             "text-sm text-red-500"

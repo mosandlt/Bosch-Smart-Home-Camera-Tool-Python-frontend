@@ -17,9 +17,33 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import secrets
 import sys
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_storage_secret() -> str:
+    """Return a storage secret for NiceGUI's signed session cookies.
+
+    Priority:
+    1. BOSCH_FRONTEND_STORAGE_SECRET env var (set this for a stable secret
+       across restarts so sessions survive a reload).
+    2. A fresh, cryptographically-random secret generated per process. Sessions
+       are invalidated on restart, but no weak secret is ever shipped.
+
+    Pre-Phase-4 a hardcoded placeholder secret was baked into the source — any
+    reader of the repo could forge session cookies. Never hardcode it again.
+    """
+    env_secret = os.environ.get("BOSCH_FRONTEND_STORAGE_SECRET", "").strip()
+    if env_secret:
+        return env_secret
+    logger.warning(
+        "BOSCH_FRONTEND_STORAGE_SECRET not set — generating a random per-process "
+        "secret. Sessions will reset on restart. Set the env var for persistence."
+    )
+    return secrets.token_urlsafe(32)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -73,7 +97,7 @@ def _setup_cli_path(cli_path: str | None) -> None:
 
 def _load_config_and_session(
     config_path: str | None,
-) -> tuple[dict, str]:
+) -> tuple[dict[str, Any], str]:
     """Load bosch_config.json and extract token.
 
     Returns:
@@ -85,7 +109,6 @@ def _load_config_and_session(
     from bosch_camera_frontend.adapters.cli_bridge import (
         load_config,
         get_token,
-        make_session,
         set_lang,
         detect_lang,
     )
@@ -147,7 +170,7 @@ def main(argv: list[str] | None = None) -> None:
         nicegui_app.storage.general["token"] = token
         nicegui_app.storage.general["config_path"] = _config_path or "(CLI default)"
 
-    def _reload_config_and_token() -> tuple[dict, str] | None:
+    def _reload_config_and_token() -> tuple[dict[str, Any], str] | None:
         """Re-read bosch_config.json + refresh token. Updates app storage in
         place so all pages see the new state on next render. Used by the
         Settings "Reload" button when the user has run `token fix` in a
@@ -181,9 +204,7 @@ def main(argv: list[str] | None = None) -> None:
         favicon="📷",
         reload=args.reload,
         show=False,  # Don't auto-open browser (headless-friendly)
-        storage_secret="bosch-camera-frontend-dev-secret-CHANGE-ME-PHASE3",
-        # TODO Phase 3: replace storage_secret with randomly generated secret
-        # stored in config or env var; add proper authentication.
+        storage_secret=_resolve_storage_secret(),
     )
 
 

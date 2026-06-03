@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import base64
 import time
-from typing import Callable
+from typing import Any, Callable
 
 from nicegui import ui
 
@@ -43,10 +43,10 @@ class CameraCard(ui.card):
 
     def __init__(
         self,
-        cam_info: dict,
+        cam_info: dict[str, Any],
         token: str,
-        cfg: dict,
-        on_click: Callable | None = None,
+        cfg: dict[str, Any],
+        on_click: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         super().__init__()
         self._cam_info = cam_info
@@ -85,9 +85,12 @@ class CameraCard(ui.card):
             with ui.column().classes("p-4 gap-2 w-full"):
                 with ui.row().classes("items-center justify-between w-full"):
                     with ui.row().classes("items-center gap-2"):
+                        # sanitize=False: static inline-styled markup, no user
+                        # input (NiceGUI 3.x sanitizes ui.html by default).
                         self._status_dot = ui.html(
                             '<div style="width:10px;height:10px;border-radius:50%;'
-                            'background:#9ca3af;"></div>'
+                            'background:#9ca3af;"></div>',
+                            sanitize=False,
                         )
                         ui.label(self._cam_info.get("name", "Camera")).classes(
                             "text-base font-semibold text-gray-900"
@@ -142,7 +145,7 @@ class CameraCard(ui.card):
         try:
             session = cli_bridge.make_session(self._token)
             cam_id = self._cam_info.get("id", "")
-            result = cli_bridge.api_ping(session, cam_id)
+            result = await cli_bridge.async_api_ping(session, cam_id)
             online = "ONLINE" in result.upper() or result == "pong"
             self._online = online
             # Disable controls visually + functionally when camera is offline.
@@ -162,7 +165,7 @@ class CameraCard(ui.card):
                 self._status_badge.classes(replace="text-xs text-gray-400 tracking-wide uppercase")
                 self._set_dot("#9ca3af")
 
-            privacy = cli_bridge.get_privacy_mode(session, cam_id)
+            privacy = await cli_bridge.async_get_privacy_mode(session, cam_id)
             if privacy is not None:
                 self._privacy_on = privacy.upper() == "ON"
                 self._suppress_toggle_event = True
@@ -186,13 +189,13 @@ class CameraCard(ui.card):
         if now - self._last_snap_ts < 5:
             return  # Debounce: don't fetch more often than every 5 s
         try:
-            data = cli_bridge.snap_from_proxy(
+            data = await cli_bridge.async_snap_from_proxy(
                 self._cam_info, self._token, hq=False, cfg=self._cfg
             )
             if not data:
                 # Fallback to latest event snapshot
                 session = cli_bridge.make_session(self._token)
-                data, _ = cli_bridge.snap_from_events(session, self._cam_info)
+                data, _ = await cli_bridge.async_snap_from_events(session, self._cam_info)
             if data:
                 self._snap_bytes = data
                 self._last_snap_ts = now
@@ -201,7 +204,7 @@ class CameraCard(ui.card):
         except Exception:
             pass  # Keep showing last good snapshot on transient errors
 
-    async def _handle_privacy_toggle(self, e) -> None:
+    async def _handle_privacy_toggle(self, e: Any) -> None:
         """Toggle privacy mode on/off via cloud API."""
         if self._suppress_toggle_event:
             return  # Programmatic set_value, not a user click.
@@ -218,7 +221,7 @@ class CameraCard(ui.card):
         try:
             session = cli_bridge.make_session(self._token)
             cam_id = self._cam_info.get("id", "")
-            ok, err = cli_bridge.set_privacy_mode(session, cam_id, on=new_state)
+            ok, err = await cli_bridge.async_set_privacy_mode(session, cam_id, on=new_state)
             if ok:
                 self._privacy_on = new_state
                 mode = "ON" if new_state else "OFF"

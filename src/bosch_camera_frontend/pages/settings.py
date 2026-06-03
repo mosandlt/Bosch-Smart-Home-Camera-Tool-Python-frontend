@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from nicegui import app, ui
 
+from bosch_camera_frontend import __version__
 from bosch_camera_frontend.adapters import cli_bridge
 
 
@@ -127,13 +128,13 @@ async def settings_page() -> None:
             current_lang = (
                 cli_bridge.detect_lang(cfg) if cfg else "en"
             )
-            # NiceGUI 2.x select with dict options: {code: label}. The
-            # list-of-{label,value} form is NiceGUI 3+ and raises
-            # ValueError on 2.x.
+            # ui.select with dict options {code: label} works on both NiceGUI
+            # 2.x and 3.x (3.x accepts list or dict; verified on 3.12).
             if current_lang not in _LANG_LABELS:
                 current_lang = "en"
 
-            lang_select = ui.select(
+            # Element is rendered for its side effect; no handle needed.
+            ui.select(
                 options=_LANG_LABELS,
                 value=current_lang,
                 label="UI Language",
@@ -148,7 +149,7 @@ async def settings_page() -> None:
                     try:
                         cli_bridge.save_config(cfg)
                         cli_bridge.set_lang(lang)
-                        lang_saved_note.set_text(f"Saved — restart app to apply fully")
+                        lang_saved_note.set_text("Saved — restart app to apply fully")
                         ui.notify(f"Language set to {_LANG_LABELS.get(lang, lang)}", color="info")
                     except Exception as exc:
                         lang_saved_note.set_text(f"Save failed: {exc}")
@@ -161,12 +162,15 @@ async def settings_page() -> None:
             ui.label("About").classes("font-semibold text-base mb-2")
             with ui.row().classes("items-center gap-2"):
                 ui.icon("info_outline", color="grey")
-                ui.label("Bosch Smart Camera Frontend v0.1.0-alpha").classes("text-sm")
+                ui.label(
+                    f"Bosch Smart Camera Frontend v{__version__}"
+                ).classes("text-sm")
             ui.label(
                 "Phase 1 skeleton — dashboard, detail, settings. "
                 "Phase 2: live stream + async. Phase 3: events + auth."
             ).classes("text-xs text-gray-400 mt-1")
             ui.html(
                 '<a href="https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend" '
-                'target="_blank" class="text-blue-600 underline text-xs">GitHub Repository</a>'
+                'target="_blank" class="text-blue-600 underline text-xs">GitHub Repository</a>',
+                sanitize=False,
             )

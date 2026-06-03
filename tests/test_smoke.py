@@ -13,9 +13,8 @@ from __future__ import annotations
 
 import os
 import sys
-import importlib
 import types
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 import pytest
 
 
@@ -113,7 +112,9 @@ class TestAppImportsCleanly:
 
     def test_version_is_alpha(self):
         import bosch_camera_frontend
-        assert "0.1.0" in bosch_camera_frontend.__version__
+        # Must match the released pyproject version and stay an alpha ("a").
+        assert bosch_camera_frontend.__version__ == "0.1.1a0"
+        assert "a" in bosch_camera_frontend.__version__
 
     def test_no_sys_exit_on_import(self):
         """Importing the package must not call sys.exit even if CLI path is missing."""

@@ -60,7 +60,8 @@ class HlsPlayer(ui.element):
                         ).classes("text-sm")
                     ui.html(
                         '<a href="https://github.com/AlexxIT/go2rtc" target="_blank" '
-                        'class="text-blue-600 underline text-xs">go2rtc on GitHub</a>'
+                        'class="text-blue-600 underline text-xs">go2rtc on GitHub</a>',
+                        sanitize=False,
                     )
                 return
 
@@ -74,7 +75,10 @@ class HlsPlayer(ui.element):
                     ).classes("text-sm text-gray-500")
                 return
 
-            # Actual hls.js player (used in Phase 2+)
+            # Actual hls.js player (used in Phase 2+).
+            # sanitize=False: NiceGUI 3.x strips <script> by default; the markup
+            # is generated internally (player_id + go2rtc stream_url), not from
+            # user input.
             player_id = f"hls_player_{id(self)}"
             ui.html(f"""
 <video id="{player_id}" controls muted
@@ -93,7 +97,7 @@ class HlsPlayer(ui.element):
   }}
 }})();
 </script>
-""")
+""", sanitize=False)
 
     def set_stream_url(self, url: str) -> None:
         """Update the stream URL and rebuild the player element."""
