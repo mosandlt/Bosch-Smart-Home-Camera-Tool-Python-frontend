@@ -19,10 +19,13 @@ from nicegui import ui
 
 from bosch_camera_frontend.adapters import cli_bridge
 
-# Placeholder 1×1 transparent PNG used while the real snapshot loads.
+# Placeholder 1×1 *fully transparent* PNG shown while the real snapshot loads,
+# so the card's grey background (#f1f3f5) shows through. The previous value
+# decoded to a half-opaque green pixel (0,255,0,127) which object-fit:cover
+# stretched into a solid green block for offline / not-yet-loaded cameras.
 _PLACEHOLDER_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwAD"
-    "hgGAWjR9awAAAABJRU5ErkJgCC=="
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+    "AAAADUlEQVR4nGNgYGBgAAAABQABpfZFQAAAAABJRU5ErkJggg=="
 )
 _PLACEHOLDER_SRC = f"data:image/png;base64,{_PLACEHOLDER_B64}"
 
