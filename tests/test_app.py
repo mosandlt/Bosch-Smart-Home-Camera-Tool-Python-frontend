@@ -39,12 +39,14 @@ def _import_app() -> types.ModuleType:
     if "bosch_camera_frontend.app" in sys.modules:
         return sys.modules["bosch_camera_frontend.app"]
     import importlib
+
     return importlib.import_module("bosch_camera_frontend.app")
 
 
 # ---------------------------------------------------------------------------
 # _parse_args
 # ---------------------------------------------------------------------------
+
 
 class TestParseArgs:
     def test_defaults(self) -> None:
@@ -60,13 +62,19 @@ class TestParseArgs:
         app = _import_app()
         cfg_file = str(tmp_path / "bosch_config.json")
         cli_dir = str(tmp_path / "cli")
-        args = app._parse_args([
-            "--config", cfg_file,
-            "--port", "9090",
-            "--host", "0.0.0.0",
-            "--cli-path", cli_dir,
-            "--reload",
-        ])
+        args = app._parse_args(
+            [
+                "--config",
+                cfg_file,
+                "--port",
+                "9090",
+                "--host",
+                "0.0.0.0",
+                "--cli-path",
+                cli_dir,
+                "--reload",
+            ]
+        )
         assert args.config == cfg_file
         assert args.port == 9090
         assert args.host == "0.0.0.0"
@@ -84,6 +92,7 @@ class TestParseArgs:
 # _resolve_storage_secret
 # ---------------------------------------------------------------------------
 
+
 class TestResolveStorageSecret:
     def test_env_var_set_returns_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("BOSCH_FRONTEND_STORAGE_SECRET", "mysecret123")
@@ -91,20 +100,26 @@ class TestResolveStorageSecret:
         result = app._resolve_storage_secret()
         assert result == "mysecret123"
 
-    def test_env_var_with_whitespace_stripped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_env_var_with_whitespace_stripped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setenv("BOSCH_FRONTEND_STORAGE_SECRET", "  stripped  ")
         app = _import_app()
         result = app._resolve_storage_secret()
         assert result == "stripped"
 
-    def test_env_var_absent_returns_random(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_env_var_absent_returns_random(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.delenv("BOSCH_FRONTEND_STORAGE_SECRET", raising=False)
         app = _import_app()
         result = app._resolve_storage_secret()
         assert isinstance(result, str)
         assert len(result) > 0
 
-    def test_env_var_empty_returns_random(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_env_var_empty_returns_random(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setenv("BOSCH_FRONTEND_STORAGE_SECRET", "")
         app = _import_app()
         result = app._resolve_storage_secret()
@@ -124,19 +139,24 @@ class TestResolveStorageSecret:
 # _setup_cli_path
 # ---------------------------------------------------------------------------
 
+
 class TestSetupCliPath:
     def test_with_cli_path_sets_env_and_calls_inject(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         app = _import_app()
         mock_inject = MagicMock()
-        monkeypatch.setattr("bosch_camera_frontend._inject_cli_path", mock_inject, raising=False)
+        monkeypatch.setattr(
+            "bosch_camera_frontend._inject_cli_path", mock_inject, raising=False
+        )
         # Also patch inside the app module's import scope
         import bosch_camera_frontend as bfe
+
         original_inject = bfe._inject_cli_path
         bfe._inject_cli_path = mock_inject  # type: ignore[attr-defined]
         try:
             import os
+
             app._setup_cli_path("/some/cli/path")
             assert os.environ.get("BOSCH_CAMERA_CLI_PATH") == "/some/cli/path"
             mock_inject.assert_called_once_with("/some/cli/path")
@@ -146,6 +166,7 @@ class TestSetupCliPath:
     def test_without_cli_path_calls_inject_with_none(self) -> None:
         app = _import_app()
         import bosch_camera_frontend as bfe
+
         mock_inject = MagicMock()
         original_inject = bfe._inject_cli_path
         bfe._inject_cli_path = mock_inject  # type: ignore[attr-defined]
@@ -161,11 +182,13 @@ class TestSetupCliPath:
         monkeypatch.setenv("BOSCH_CAMERA_CLI_PATH", "/existing/path")
         app = _import_app()
         import bosch_camera_frontend as bfe
+
         mock_inject = MagicMock()
         original_inject = bfe._inject_cli_path
         bfe._inject_cli_path = mock_inject  # type: ignore[attr-defined]
         try:
             import os
+
             app._setup_cli_path(None)
             # Env should remain unchanged (we only set it when cli_path is truthy).
             assert os.environ.get("BOSCH_CAMERA_CLI_PATH") == "/existing/path"
@@ -176,6 +199,7 @@ class TestSetupCliPath:
 # ---------------------------------------------------------------------------
 # _load_config_and_session
 # ---------------------------------------------------------------------------
+
 
 class TestLoadConfigAndSession:
     """All cli_bridge functions are patched so no real network/file access."""
@@ -193,19 +217,33 @@ class TestLoadConfigAndSession:
         import bosch_camera_frontend.adapters.cli_bridge as bridge
 
         if load_config_side_effect is not None:
-            monkeypatch.setattr(bridge, "load_config", MagicMock(side_effect=load_config_side_effect))
+            monkeypatch.setattr(
+                bridge, "load_config", MagicMock(side_effect=load_config_side_effect)
+            )
         else:
-            monkeypatch.setattr(bridge, "load_config", MagicMock(return_value=load_config_return or FAKE_CFG))
+            monkeypatch.setattr(
+                bridge,
+                "load_config",
+                MagicMock(return_value=load_config_return or FAKE_CFG),
+            )
 
         if get_token_side_effect is not None:
-            monkeypatch.setattr(bridge, "get_token", MagicMock(side_effect=get_token_side_effect))
+            monkeypatch.setattr(
+                bridge, "get_token", MagicMock(side_effect=get_token_side_effect)
+            )
         else:
-            monkeypatch.setattr(bridge, "get_token", MagicMock(return_value=get_token_return))
+            monkeypatch.setattr(
+                bridge, "get_token", MagicMock(return_value=get_token_return)
+            )
 
-        monkeypatch.setattr(bridge, "detect_lang", MagicMock(return_value=detect_lang_return))
+        monkeypatch.setattr(
+            bridge, "detect_lang", MagicMock(return_value=detect_lang_return)
+        )
         monkeypatch.setattr(bridge, "set_lang", MagicMock())
 
-    def test_success_returns_cfg_and_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_success_returns_cfg_and_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         self._patch_bridge(monkeypatch)
         app = _import_app()
         cfg, token = app._load_config_and_session(None)
@@ -215,7 +253,9 @@ class TestLoadConfigAndSession:
     def test_load_config_file_not_found_raises_systemexit(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        self._patch_bridge(monkeypatch, load_config_side_effect=FileNotFoundError("not found"))
+        self._patch_bridge(
+            monkeypatch, load_config_side_effect=FileNotFoundError("not found")
+        )
         app = _import_app()
         with pytest.raises(SystemExit) as exc_info:
             app._load_config_and_session("/nonexistent/bosch_config.json")
@@ -224,7 +264,9 @@ class TestLoadConfigAndSession:
     def test_load_config_generic_exception_raises_systemexit(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        self._patch_bridge(monkeypatch, load_config_side_effect=RuntimeError("parse error"))
+        self._patch_bridge(
+            monkeypatch, load_config_side_effect=RuntimeError("parse error")
+        )
         app = _import_app()
         with pytest.raises(SystemExit) as exc_info:
             app._load_config_and_session(None)
@@ -244,6 +286,7 @@ class TestLoadConfigAndSession:
 
     def test_detect_lang_called(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as bridge
+
         mock_detect = MagicMock(return_value="de")
         mock_set = MagicMock()
         monkeypatch.setattr(bridge, "load_config", MagicMock(return_value=FAKE_CFG))
@@ -260,6 +303,7 @@ class TestLoadConfigAndSession:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as bridge
+
         mock_load = MagicMock(return_value=FAKE_CFG)
         monkeypatch.setattr(bridge, "load_config", mock_load)
         monkeypatch.setattr(bridge, "get_token", MagicMock(return_value=FAKE_TOKEN))
@@ -275,12 +319,14 @@ class TestLoadConfigAndSession:
 # main()
 # ---------------------------------------------------------------------------
 
+
 class TestMain:
     """Tests for main() — requires fake_nicegui fixture."""
 
     def _patch_internals(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Patch _setup_cli_path and _load_config_and_session inside app module."""
         import bosch_camera_frontend.app as app_mod
+
         monkeypatch.setattr(
             app_mod,
             "_setup_cli_path",
@@ -302,6 +348,7 @@ class TestMain:
     ) -> None:
         """main() should call ui.run without raising."""
         import bosch_camera_frontend.app as app_mod
+
         self._patch_internals(monkeypatch)
         # Should not raise.
         app_mod.main([])
@@ -311,6 +358,7 @@ class TestMain:
     ) -> None:
         """ui.run is called with the parsed host/port."""
         import bosch_camera_frontend.app as app_mod
+
         self._patch_internals(monkeypatch)
 
         run_calls: list[dict[str, Any]] = []
@@ -329,6 +377,7 @@ class TestMain:
         self, fake_nicegui: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.app as app_mod
+
         self._patch_internals(monkeypatch)
 
         run_calls: list[dict[str, Any]] = []
@@ -344,6 +393,7 @@ class TestMain:
         self, fake_nicegui: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.app as app_mod
+
         self._patch_internals(monkeypatch)
 
         run_calls: list[dict[str, Any]] = []
@@ -359,12 +409,17 @@ class TestMain:
         self, fake_nicegui: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.app as app_mod
+
         mock_setup = MagicMock()
         monkeypatch.setattr(app_mod, "_setup_cli_path", mock_setup)
         monkeypatch.setattr(
-            app_mod, "_load_config_and_session", MagicMock(return_value=(FAKE_CFG, FAKE_TOKEN))
+            app_mod,
+            "_load_config_and_session",
+            MagicMock(return_value=(FAKE_CFG, FAKE_TOKEN)),
         )
-        monkeypatch.setattr(app_mod, "_resolve_storage_secret", MagicMock(return_value="s"))
+        monkeypatch.setattr(
+            app_mod, "_resolve_storage_secret", MagicMock(return_value="s")
+        )
         app_mod.main(["--cli-path", "/tmp/cli"])
         mock_setup.assert_called_once_with("/tmp/cli")
 
@@ -372,10 +427,13 @@ class TestMain:
         self, fake_nicegui: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.app as app_mod
+
         mock_load = MagicMock(return_value=(FAKE_CFG, FAKE_TOKEN))
         monkeypatch.setattr(app_mod, "_setup_cli_path", MagicMock())
         monkeypatch.setattr(app_mod, "_load_config_and_session", mock_load)
-        monkeypatch.setattr(app_mod, "_resolve_storage_secret", MagicMock(return_value="s"))
+        monkeypatch.setattr(
+            app_mod, "_resolve_storage_secret", MagicMock(return_value="s")
+        )
         app_mod.main(["--config", "/tmp/bosch_config.json"])
         mock_load.assert_called_once_with("/tmp/bosch_config.json")
 
@@ -384,6 +442,7 @@ class TestMain:
     ) -> None:
         """app.on_startup is called with a callable during main()."""
         import bosch_camera_frontend.app as app_mod
+
         self._patch_internals(monkeypatch)
 
         startup_callbacks: list[Any] = []
@@ -402,6 +461,7 @@ class TestMain:
     ) -> None:
         """Calling the _on_startup closure fills app.storage.general."""
         import bosch_camera_frontend.app as app_mod
+
         self._patch_internals(monkeypatch)
 
         startup_callbacks: list[Any] = []
@@ -426,6 +486,7 @@ class TestMain:
     ) -> None:
         """When no --config given, config_path in storage is '(CLI default)'."""
         import bosch_camera_frontend.app as app_mod
+
         self._patch_internals(monkeypatch)
 
         startup_callbacks: list[Any] = []
@@ -445,6 +506,7 @@ class TestMain:
     ) -> None:
         """When --config is given, config_path in storage matches."""
         import bosch_camera_frontend.app as app_mod
+
         self._patch_internals(monkeypatch)
 
         startup_callbacks: list[Any] = []
@@ -465,6 +527,7 @@ class TestMain:
         """_reload_config_and_token updates storage and returns (cfg, token)."""
         import bosch_camera_frontend.app as app_mod
         import bosch_camera_frontend.adapters.cli_bridge as bridge
+
         self._patch_internals(monkeypatch)
         app_mod.main([])
 
@@ -491,6 +554,7 @@ class TestMain:
         """_reload_config_and_token returns None when _load_config_and_session exits."""
         import bosch_camera_frontend.app as app_mod
         import bosch_camera_frontend.adapters.cli_bridge as bridge
+
         self._patch_internals(monkeypatch)
         app_mod.main([])
 
@@ -510,6 +574,7 @@ class TestMain:
         """_reload_config_and_token returns None on unexpected errors."""
         import bosch_camera_frontend.app as app_mod
         import bosch_camera_frontend.adapters.cli_bridge as bridge
+
         self._patch_internals(monkeypatch)
         app_mod.main([])
 
@@ -528,8 +593,13 @@ class TestMain:
     ) -> None:
         """storage_secret kwarg passed to ui.run comes from _resolve_storage_secret."""
         import bosch_camera_frontend.app as app_mod
+
         self._patch_internals(monkeypatch)
-        monkeypatch.setattr(app_mod, "_resolve_storage_secret", MagicMock(return_value="test-secret-xyz"))
+        monkeypatch.setattr(
+            app_mod,
+            "_resolve_storage_secret",
+            MagicMock(return_value="test-secret-xyz"),
+        )
 
         run_calls: list[dict[str, Any]] = []
 
@@ -545,6 +615,7 @@ class TestMain:
     ) -> None:
         """app.storage.general['__reload_fn_name__'] is set to 'reload_config_and_token'."""
         import bosch_camera_frontend.app as app_mod
+
         self._patch_internals(monkeypatch)
         app_mod.main([])
         assert (
@@ -558,6 +629,7 @@ class TestMain:
         """cli_bridge.reload_config_and_token is callable after main() runs."""
         import bosch_camera_frontend.app as app_mod
         import bosch_camera_frontend.adapters.cli_bridge as bridge
+
         self._patch_internals(monkeypatch)
         app_mod.main([])
         assert callable(bridge.reload_config_and_token)  # type: ignore[attr-defined]

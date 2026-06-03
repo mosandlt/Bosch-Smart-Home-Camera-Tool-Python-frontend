@@ -66,6 +66,7 @@ def _ensure_cli_available(cli_path: str | None = None) -> None:
 # registrations inside bosch_camera.py) when running tests with CLI mocked.
 # ---------------------------------------------------------------------------
 
+
 def _bc() -> ModuleType:
     """Return the bosch_camera module (import on first call)."""
     if "bosch_camera" not in sys.modules:
@@ -88,6 +89,7 @@ async def _to_thread(func: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
+
 
 def load_config(config_path: str | None = None) -> ConfigDict:
     """Load bosch_config.json.  Uses CLI default path if *config_path* is None."""
@@ -116,6 +118,7 @@ def check_token_age(cfg: ConfigDict) -> str:
 # Session / Token
 # ---------------------------------------------------------------------------
 
+
 def make_session(token: str) -> "requests.Session":
     return cast("requests.Session", _bc().make_session(token))
 
@@ -124,13 +127,16 @@ def get_token(cfg: ConfigDict) -> str:
     """Return the current bearer token (does NOT prompt for a new one)."""
     token: str = cfg.get("account", {}).get("bearer_token", "").strip()
     if not token:
-        raise ValueError("No bearer token in config. Run: python3 bosch_camera.py token fix")
+        raise ValueError(
+            "No bearer token in config. Run: python3 bosch_camera.py token fix"
+        )
     return token
 
 
 # ---------------------------------------------------------------------------
 # Camera discovery & state
 # ---------------------------------------------------------------------------
+
 
 def get_cameras(cfg: ConfigDict, session: "requests.Session") -> dict[str, CameraDict]:
     """Always live from /v11/video_inputs — the cloud is authoritative for
@@ -170,7 +176,9 @@ def get_cameras(cfg: ConfigDict, session: "requests.Session") -> dict[str, Camer
         return cached or cast("dict[str, CameraDict]", bc.get_cameras(cfg, session))
 
 
-def discover_cameras(cfg: ConfigDict, session: "requests.Session") -> dict[str, CameraDict]:
+def discover_cameras(
+    cfg: ConfigDict, session: "requests.Session"
+) -> dict[str, CameraDict]:
     return cast("dict[str, CameraDict]", _bc().discover_cameras(cfg, session))
 
 
@@ -196,6 +204,7 @@ def api_get_camera(session: "requests.Session", cam_id: str) -> CameraDict | Non
 # Snapshots
 # ---------------------------------------------------------------------------
 
+
 def snap_from_proxy(
     cam_info: CameraDict, token: str, hq: bool = False, cfg: ConfigDict | None = None
 ) -> bytes | None:
@@ -211,6 +220,7 @@ def snap_from_events(
 # ---------------------------------------------------------------------------
 # Camera controls
 # ---------------------------------------------------------------------------
+
 
 def set_privacy_mode(
     session: "requests.Session", cam_id: str, on: bool
@@ -270,6 +280,7 @@ def get_all_cameras_status(session: "requests.Session") -> list[dict[str, Any]]:
 # Use these from `async def` NiceGUI handlers so the event loop stays free.
 # ---------------------------------------------------------------------------
 
+
 async def async_get_cameras(
     cfg: ConfigDict, session: "requests.Session"
 ) -> dict[str, CameraDict]:
@@ -322,6 +333,7 @@ async def async_check_token_age(cfg: ConfigDict) -> str:
 # i18n
 # ---------------------------------------------------------------------------
 
+
 def t(msg_key: str, **kwargs: Any) -> str:
     return cast(str, _i18n().t(msg_key, **kwargs))
 
@@ -335,5 +347,15 @@ def detect_lang(cfg: ConfigDict) -> str:
 
 
 AVAILABLE_LANGS: tuple[str, ...] = (
-    "en", "de", "fr", "es", "it", "nl", "pl", "pt", "ru", "uk", "zh-Hans",
+    "en",
+    "de",
+    "fr",
+    "es",
+    "it",
+    "nl",
+    "pl",
+    "pt",
+    "ru",
+    "uk",
+    "zh-Hans",
 )

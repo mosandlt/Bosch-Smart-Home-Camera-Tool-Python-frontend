@@ -31,28 +31,36 @@ def _make_bridge(
     br.make_session = MagicMock(return_value=MagicMock())
 
     if ping_raises is not None:
+
         async def _ping(*a: Any, **kw: Any) -> str:
             raise ping_raises  # type: ignore[misc]
+
         br.async_api_ping = _ping
     else:
+
         async def _ping(*a: Any, **kw: Any) -> str:  # type: ignore[misc]
             return ping_result
+
         br.async_api_ping = _ping
 
     async def _get_privacy(*a: Any, **kw: Any) -> str | None:
         return privacy_result
+
     br.async_get_privacy_mode = _get_privacy
 
     async def _snap_proxy(*a: Any, **kw: Any) -> bytes | None:
         return snap_proxy_result
+
     br.async_snap_from_proxy = _snap_proxy
 
     async def _snap_events(*a: Any, **kw: Any) -> tuple[bytes | None, str]:
         return snap_events_result
+
     br.async_snap_from_events = _snap_events
 
     async def _set_privacy(*a: Any, **kw: Any) -> tuple[bool, str | None]:
         return set_privacy_result
+
     br.async_set_privacy_mode = _set_privacy
 
     return br
@@ -84,7 +92,9 @@ class TestGoRtcAvailable:
     ) -> None:
         from bosch_camera_frontend.components import hls_player
 
-        monkeypatch.setattr(hls_player.shutil, "which", lambda _: "/usr/local/bin/go2rtc")
+        monkeypatch.setattr(
+            hls_player.shutil, "which", lambda _: "/usr/local/bin/go2rtc"
+        )
         assert hls_player._go2rtc_available() is True
 
 
@@ -312,7 +322,9 @@ class TestInitialLoad:
     ) -> None:
         from bosch_camera_frontend.components import camera_card
 
-        br = _make_bridge(ping_result="ONLINE", snap_proxy_result=b"\xff\xd8\xff\xe0test")
+        br = _make_bridge(
+            ping_result="ONLINE", snap_proxy_result=b"\xff\xd8\xff\xe0test"
+        )
         camera_card.cli_bridge = br  # type: ignore[attr-defined]
 
         card = camera_card.CameraCard(
@@ -1126,9 +1138,7 @@ class TestCameraCardMissingFields:
             # firmware deliberately missing
         }
         # Construction must not raise
-        card = camera_card.CameraCard(
-            cam_info=cam, token=_FAKE_TOKEN, cfg=fake_cfg
-        )
+        card = camera_card.CameraCard(cam_info=cam, token=_FAKE_TOKEN, cfg=fake_cfg)
         assert card is not None
 
     def test_empty_cam_info_uses_defaults(
@@ -1141,7 +1151,5 @@ class TestCameraCardMissingFields:
         br = _make_bridge()
         camera_card.cli_bridge = br  # type: ignore[attr-defined]
 
-        card = camera_card.CameraCard(
-            cam_info={}, token=_FAKE_TOKEN, cfg=fake_cfg
-        )
+        card = camera_card.CameraCard(cam_info={}, token=_FAKE_TOKEN, cfg=fake_cfg)
         assert card is not None

@@ -25,16 +25,14 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _DEFAULT_CLI_PATH = os.path.normpath(
     os.path.join(
         _THIS_DIR,
-        "..",   # src/
-        "..",   # Bosch-Smart-Home-Camera-Tool-Python-frontend/
-        "..",   # bosch kamera/
+        "..",  # src/
+        "..",  # Bosch-Smart-Home-Camera-Tool-Python-frontend/
+        "..",  # bosch kamera/
         "Bosch-Smart-Home-Camera-Tool-Python",
     )
 )
 
-BOSCH_CAMERA_CLI_PATH: str = os.environ.get(
-    "BOSCH_CAMERA_CLI_PATH", _DEFAULT_CLI_PATH
-)
+BOSCH_CAMERA_CLI_PATH: str = os.environ.get("BOSCH_CAMERA_CLI_PATH", _DEFAULT_CLI_PATH)
 
 
 def _inject_cli_path(path: str | None = None) -> None:

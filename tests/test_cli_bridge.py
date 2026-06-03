@@ -83,6 +83,7 @@ def _make_fake_session(
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def patch_bc_and_i18n(monkeypatch: pytest.MonkeyPatch):
     """Ensure cli_bridge is imported and both _bc/_i18n are monkeypatched."""
@@ -104,20 +105,36 @@ def patch_bc_and_i18n(monkeypatch: pytest.MonkeyPatch):
 # AVAILABLE_LANGS
 # ---------------------------------------------------------------------------
 
+
 class TestAvailableLangs:
     def test_has_11_entries(self) -> None:
         from bosch_camera_frontend.adapters.cli_bridge import AVAILABLE_LANGS
+
         assert len(AVAILABLE_LANGS) == 11
 
     def test_contains_en_de_zh(self) -> None:
         from bosch_camera_frontend.adapters.cli_bridge import AVAILABLE_LANGS
+
         assert "en" in AVAILABLE_LANGS
         assert "de" in AVAILABLE_LANGS
         assert "zh-Hans" in AVAILABLE_LANGS
 
     def test_all_expected_languages(self) -> None:
         from bosch_camera_frontend.adapters.cli_bridge import AVAILABLE_LANGS
-        expected = {"en", "de", "fr", "es", "it", "nl", "pl", "pt", "ru", "uk", "zh-Hans"}
+
+        expected = {
+            "en",
+            "de",
+            "fr",
+            "es",
+            "it",
+            "nl",
+            "pl",
+            "pt",
+            "ru",
+            "uk",
+            "zh-Hans",
+        }
         assert set(AVAILABLE_LANGS) == expected
 
 
@@ -125,37 +142,44 @@ class TestAvailableLangs:
 # get_token
 # ---------------------------------------------------------------------------
 
+
 class TestGetToken:
     def test_returns_token_when_present(self) -> None:
         from bosch_camera_frontend.adapters.cli_bridge import get_token
+
         cfg = {"account": {"bearer_token": FAKE_TOKEN}}
         assert get_token(cfg) == FAKE_TOKEN
 
     def test_strips_whitespace(self) -> None:
         from bosch_camera_frontend.adapters.cli_bridge import get_token
+
         cfg = {"account": {"bearer_token": f"  {FAKE_TOKEN}  "}}
         assert get_token(cfg) == FAKE_TOKEN
 
     def test_raises_on_empty_token(self) -> None:
         from bosch_camera_frontend.adapters.cli_bridge import get_token
+
         cfg = {"account": {"bearer_token": ""}}
         with pytest.raises(ValueError, match="No bearer token"):
             get_token(cfg)
 
     def test_raises_on_whitespace_only_token(self) -> None:
         from bosch_camera_frontend.adapters.cli_bridge import get_token
+
         cfg = {"account": {"bearer_token": "   "}}
         with pytest.raises(ValueError, match="No bearer token"):
             get_token(cfg)
 
     def test_raises_on_missing_account_key(self) -> None:
         from bosch_camera_frontend.adapters.cli_bridge import get_token
+
         cfg: dict[str, Any] = {}
         with pytest.raises(ValueError, match="No bearer token"):
             get_token(cfg)
 
     def test_raises_on_missing_bearer_token_key(self) -> None:
         from bosch_camera_frontend.adapters.cli_bridge import get_token
+
         cfg = {"account": {}}
         with pytest.raises(ValueError, match="No bearer token"):
             get_token(cfg)
@@ -165,9 +189,11 @@ class TestGetToken:
 # load_config
 # ---------------------------------------------------------------------------
 
+
 class TestLoadConfig:
     def test_load_config_without_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_bc = _make_fake_bc(load_config=MagicMock(return_value={"key": "val"}))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
         result = cb.load_config()
@@ -178,6 +204,7 @@ class TestLoadConfig:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_bc = _make_fake_bc(
             CONFIG_FILE="original.json",
             load_config=MagicMock(return_value={"loaded": True}),
@@ -230,9 +257,11 @@ class TestLoadConfig:
 # save_config / check_token_age / make_session
 # ---------------------------------------------------------------------------
 
+
 class TestDelegateFunctions:
     def test_save_config_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_bc = _make_fake_bc()
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
         cfg = {"cameras": {}}
@@ -241,6 +270,7 @@ class TestDelegateFunctions:
 
     def test_check_token_age_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_bc = _make_fake_bc(check_token_age=MagicMock(return_value="fresh"))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
         cfg = {"account": {}}
@@ -250,6 +280,7 @@ class TestDelegateFunctions:
 
     def test_make_session_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_session = MagicMock()
         fake_bc = _make_fake_bc(make_session=MagicMock(return_value=fake_session))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
@@ -261,6 +292,7 @@ class TestDelegateFunctions:
 # ---------------------------------------------------------------------------
 # get_cameras
 # ---------------------------------------------------------------------------
+
 
 class TestGetCameras:
     def _make_cloud_cam(
@@ -281,6 +313,7 @@ class TestGetCameras:
 
     def test_200_builds_fresh_dict(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         cloud_cams = [self._make_cloud_cam()]
         resp = _fake_response(200, cloud_cams)
         session = _make_fake_session(get_response=resp)
@@ -301,6 +334,7 @@ class TestGetCameras:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         cloud_cams = [self._make_cloud_cam()]
         resp = _fake_response(200, cloud_cams)
         session = _make_fake_session(get_response=resp)
@@ -334,6 +368,7 @@ class TestGetCameras:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         cloud_cams = [self._make_cloud_cam(title="New Cam")]
         resp = _fake_response(200, cloud_cams)
         session = _make_fake_session(get_response=resp)
@@ -353,6 +388,7 @@ class TestGetCameras:
 
     def test_200_updates_cfg_cameras(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         cloud_cams = [self._make_cloud_cam()]
         resp = _fake_response(200, cloud_cams)
         session = _make_fake_session(get_response=resp)
@@ -367,6 +403,7 @@ class TestGetCameras:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         cloud_cam = {"id": FAKE_CAM_ID, "title": None}
         resp = _fake_response(200, [cloud_cam])
         session = _make_fake_session(get_response=resp)
@@ -382,6 +419,7 @@ class TestGetCameras:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         cloud_cam: dict[str, Any] = {"title": None}
         resp = _fake_response(200, [cloud_cam])
         session = _make_fake_session(get_response=resp)
@@ -395,6 +433,7 @@ class TestGetCameras:
 
     def test_non_200_returns_cached(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(503)
         session = _make_fake_session(get_response=resp)
         cached = {"Test Cam": {"id": FAKE_CAM_ID}}
@@ -409,6 +448,7 @@ class TestGetCameras:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(503)
         session = _make_fake_session(get_response=resp)
         bc_result = {"BC Cam": {"id": FAKE_CAM_ID_2}}
@@ -421,6 +461,7 @@ class TestGetCameras:
 
     def test_exception_returns_cached(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         session = MagicMock()
         session.get = MagicMock(side_effect=ConnectionError("timeout"))
         cached = {"Test Cam": {"id": FAKE_CAM_ID}}
@@ -435,6 +476,7 @@ class TestGetCameras:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         session = MagicMock()
         session.get = MagicMock(side_effect=RuntimeError("boom"))
         bc_result = {"Fallback Cam": {"id": FAKE_CAM_ID_2}}
@@ -450,9 +492,11 @@ class TestGetCameras:
 # set_privacy_mode
 # ---------------------------------------------------------------------------
 
+
 class TestSetPrivacyMode:
     def test_204_returns_true_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(204)
         session = _make_fake_session(put_response=resp)
         fake_bc = _make_fake_bc()
@@ -464,6 +508,7 @@ class TestSetPrivacyMode:
 
     def test_204_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(204)
         session = _make_fake_session(put_response=resp)
         fake_bc = _make_fake_bc()
@@ -475,6 +520,7 @@ class TestSetPrivacyMode:
 
     def test_444_returns_camera_offline(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(444, {"error": "sh:camera.busy"})
         session = _make_fake_session(put_response=resp)
         fake_bc = _make_fake_bc()
@@ -488,6 +534,7 @@ class TestSetPrivacyMode:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(400, {"error": "sh:camera.unavailable"})
         session = _make_fake_session(put_response=resp)
         fake_bc = _make_fake_bc()
@@ -499,6 +546,7 @@ class TestSetPrivacyMode:
 
     def test_401_returns_auth_expired(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(401, {"error": ""})
         session = _make_fake_session(put_response=resp)
         fake_bc = _make_fake_bc()
@@ -509,8 +557,11 @@ class TestSetPrivacyMode:
         assert err is not None
         assert "Auth expired" in err
 
-    def test_403_returns_permission_denied(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_403_returns_permission_denied(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(403, {"error": ""})
         session = _make_fake_session(put_response=resp)
         fake_bc = _make_fake_bc()
@@ -524,6 +575,7 @@ class TestSetPrivacyMode:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(500, {"error": "sh:server.error"})
         session = _make_fake_session(put_response=resp)
         fake_bc = _make_fake_bc()
@@ -538,6 +590,7 @@ class TestSetPrivacyMode:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = MagicMock()
         resp.status_code = 500
         resp.json = MagicMock(side_effect=ValueError("no json"))
@@ -552,6 +605,7 @@ class TestSetPrivacyMode:
 
     def test_puts_correct_payload_on(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(204)
         session = _make_fake_session(put_response=resp)
         fake_bc = _make_fake_bc()
@@ -563,6 +617,7 @@ class TestSetPrivacyMode:
 
     def test_puts_correct_payload_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(204)
         session = _make_fake_session(put_response=resp)
         fake_bc = _make_fake_bc()
@@ -577,11 +632,13 @@ class TestSetPrivacyMode:
 # get_privacy_mode
 # ---------------------------------------------------------------------------
 
+
 class TestGetPrivacyMode:
     def test_200_matching_id_returns_privacy_mode(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         cams = [{"id": FAKE_CAM_ID, "privacyMode": "ON"}]
         resp = _fake_response(200, cams)
         session = _make_fake_session(get_response=resp)
@@ -593,6 +650,7 @@ class TestGetPrivacyMode:
 
     def test_200_off_mode(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         cams = [{"id": FAKE_CAM_ID, "privacyMode": "OFF"}]
         resp = _fake_response(200, cams)
         session = _make_fake_session(get_response=resp)
@@ -606,6 +664,7 @@ class TestGetPrivacyMode:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         cams = [{"id": FAKE_CAM_ID_2, "privacyMode": "ON"}]
         resp = _fake_response(200, cams)
         session = _make_fake_session(get_response=resp)
@@ -617,6 +676,7 @@ class TestGetPrivacyMode:
 
     def test_non_200_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(503)
         session = _make_fake_session(get_response=resp)
         fake_bc = _make_fake_bc()
@@ -629,6 +689,7 @@ class TestGetPrivacyMode:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         cams = [{"id": FAKE_CAM_ID}]
         resp = _fake_response(200, cams)
         session = _make_fake_session(get_response=resp)
@@ -643,9 +704,11 @@ class TestGetPrivacyMode:
 # get_all_cameras_status
 # ---------------------------------------------------------------------------
 
+
 class TestGetAllCamerasStatus:
     def test_200_returns_list(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         cams = [
             {"id": FAKE_CAM_ID, "privacyMode": "OFF"},
             {"id": FAKE_CAM_ID_2, "privacyMode": "ON"},
@@ -660,6 +723,7 @@ class TestGetAllCamerasStatus:
 
     def test_non_200_returns_empty_list(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(401)
         session = _make_fake_session(get_response=resp)
         fake_bc = _make_fake_bc()
@@ -670,6 +734,7 @@ class TestGetAllCamerasStatus:
 
     def test_500_returns_empty_list(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(500)
         session = _make_fake_session(get_response=resp)
         fake_bc = _make_fake_bc()
@@ -683,9 +748,11 @@ class TestGetAllCamerasStatus:
 # Delegation wrappers (discover, resolve, api_ping, api_get_events, api_get_camera, snaps)
 # ---------------------------------------------------------------------------
 
+
 class TestDelegationWrappers:
     def test_discover_cameras_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         expected = {"Cam": {"id": FAKE_CAM_ID}}
         fake_bc = _make_fake_bc(discover_cameras=MagicMock(return_value=expected))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
@@ -698,6 +765,7 @@ class TestDelegationWrappers:
 
     def test_resolve_cam_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         expected = {"id": FAKE_CAM_ID}
         fake_bc = _make_fake_bc(resolve_cam=MagicMock(return_value=expected))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
@@ -709,6 +777,7 @@ class TestDelegationWrappers:
 
     def test_resolve_cam_with_none_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_bc = _make_fake_bc(resolve_cam=MagicMock(return_value={}))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
 
@@ -717,6 +786,7 @@ class TestDelegationWrappers:
 
     def test_api_ping_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_bc = _make_fake_bc(api_ping=MagicMock(return_value="pong"))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
 
@@ -727,6 +797,7 @@ class TestDelegationWrappers:
 
     def test_api_get_events_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         events = [{"type": "motion"}]
         fake_bc = _make_fake_bc(api_get_events=MagicMock(return_value=events))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
@@ -736,8 +807,11 @@ class TestDelegationWrappers:
         assert result == events
         fake_bc.api_get_events.assert_called_once_with(session, FAKE_CAM_ID, 5)
 
-    def test_api_get_events_default_limit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_api_get_events_default_limit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_bc = _make_fake_bc(api_get_events=MagicMock(return_value=[]))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
 
@@ -747,6 +821,7 @@ class TestDelegationWrappers:
 
     def test_api_get_camera_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         cam_data = {"id": FAKE_CAM_ID, "title": "Test"}
         fake_bc = _make_fake_bc(api_get_camera=MagicMock(return_value=cam_data))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
@@ -758,6 +833,7 @@ class TestDelegationWrappers:
 
     def test_api_get_camera_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_bc = _make_fake_bc(api_get_camera=MagicMock(return_value=None))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
 
@@ -766,26 +842,33 @@ class TestDelegationWrappers:
 
     def test_snap_from_proxy_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_bc = _make_fake_bc(snap_from_proxy=MagicMock(return_value=b"image"))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
 
         cam_info = {"id": FAKE_CAM_ID}
         result = cb.snap_from_proxy(cam_info, FAKE_TOKEN, hq=True)
         assert result == b"image"
-        fake_bc.snap_from_proxy.assert_called_once_with(cam_info, FAKE_TOKEN, hq=True, cfg=None)
+        fake_bc.snap_from_proxy.assert_called_once_with(
+            cam_info, FAKE_TOKEN, hq=True, cfg=None
+        )
 
     def test_snap_from_proxy_with_cfg(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_bc = _make_fake_bc(snap_from_proxy=MagicMock(return_value=None))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
 
         cam_info = {"id": FAKE_CAM_ID}
         cfg: dict[str, Any] = {"key": "val"}
         cb.snap_from_proxy(cam_info, FAKE_TOKEN, hq=False, cfg=cfg)
-        fake_bc.snap_from_proxy.assert_called_once_with(cam_info, FAKE_TOKEN, hq=False, cfg=cfg)
+        fake_bc.snap_from_proxy.assert_called_once_with(
+            cam_info, FAKE_TOKEN, hq=False, cfg=cfg
+        )
 
     def test_snap_from_events_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_bc = _make_fake_bc(
             snap_from_events=MagicMock(return_value=(b"snap", "https://example.com"))
         )
@@ -802,9 +885,11 @@ class TestDelegationWrappers:
 # i18n
 # ---------------------------------------------------------------------------
 
+
 class TestI18n:
     def test_t_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_i18n = _make_fake_i18n(t=MagicMock(return_value="hallo"))
         monkeypatch.setattr(cb, "_i18n", lambda: fake_i18n)
 
@@ -814,6 +899,7 @@ class TestI18n:
 
     def test_t_passes_kwargs(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_i18n = _make_fake_i18n(t=MagicMock(return_value="hello world"))
         monkeypatch.setattr(cb, "_i18n", lambda: fake_i18n)
 
@@ -823,6 +909,7 @@ class TestI18n:
 
     def test_set_lang_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_i18n = _make_fake_i18n()
         monkeypatch.setattr(cb, "_i18n", lambda: fake_i18n)
 
@@ -831,6 +918,7 @@ class TestI18n:
 
     def test_detect_lang_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_i18n = _make_fake_i18n(detect_lang=MagicMock(return_value="en"))
         monkeypatch.setattr(cb, "_i18n", lambda: fake_i18n)
 
@@ -843,6 +931,7 @@ class TestI18n:
 # ---------------------------------------------------------------------------
 # _to_thread helper
 # ---------------------------------------------------------------------------
+
 
 class TestToThread:
     async def test_runs_blocking_function(self) -> None:
@@ -877,9 +966,11 @@ class TestToThread:
 # Async twins
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncTwins:
     async def test_async_get_cameras(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         cloud_cams = [{"id": FAKE_CAM_ID, "title": "Test Cam"}]
         resp = _fake_response(200, cloud_cams)
         session = _make_fake_session(get_response=resp)
@@ -892,6 +983,7 @@ class TestAsyncTwins:
 
     async def test_async_resolve_cam(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         expected = {"id": FAKE_CAM_ID}
         fake_bc = _make_fake_bc(resolve_cam=MagicMock(return_value=expected))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
@@ -901,6 +993,7 @@ class TestAsyncTwins:
 
     async def test_async_api_ping(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_bc = _make_fake_bc(api_ping=MagicMock(return_value="pong"))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
 
@@ -909,6 +1002,7 @@ class TestAsyncTwins:
 
     async def test_async_api_get_events(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         events = [{"type": "motion"}, {"type": "alarm"}]
         fake_bc = _make_fake_bc(api_get_events=MagicMock(return_value=events))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
@@ -918,6 +1012,7 @@ class TestAsyncTwins:
 
     async def test_async_snap_from_proxy(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_bc = _make_fake_bc(snap_from_proxy=MagicMock(return_value=b"img"))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
 
@@ -925,8 +1020,11 @@ class TestAsyncTwins:
         result = await cb.async_snap_from_proxy(cam_info, FAKE_TOKEN, hq=True)
         assert result == b"img"
 
-    async def test_async_snap_from_events(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_async_snap_from_events(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_bc = _make_fake_bc(
             snap_from_events=MagicMock(return_value=(b"snap", "url"))
         )
@@ -939,6 +1037,7 @@ class TestAsyncTwins:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(204)
         session = _make_fake_session(put_response=resp)
         fake_bc = _make_fake_bc()
@@ -952,6 +1051,7 @@ class TestAsyncTwins:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         resp = _fake_response(401, {"error": ""})
         session = _make_fake_session(put_response=resp)
         fake_bc = _make_fake_bc()
@@ -964,6 +1064,7 @@ class TestAsyncTwins:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         cams = [{"id": FAKE_CAM_ID, "privacyMode": "OFF"}]
         resp = _fake_response(200, cams)
         session = _make_fake_session(get_response=resp)
@@ -975,6 +1076,7 @@ class TestAsyncTwins:
 
     async def test_async_check_token_age(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
+
         fake_bc = _make_fake_bc(check_token_age=MagicMock(return_value="expired"))
         monkeypatch.setattr(cb, "_bc", lambda: fake_bc)
 
@@ -985,6 +1087,7 @@ class TestAsyncTwins:
 # ---------------------------------------------------------------------------
 # Optional: _ensure_cli_available / _bc / _i18n import path
 # ---------------------------------------------------------------------------
+
 
 class TestEnsureCliAvailable:
     def test_ensure_cli_available_raises_file_not_found_for_bad_path(self) -> None:

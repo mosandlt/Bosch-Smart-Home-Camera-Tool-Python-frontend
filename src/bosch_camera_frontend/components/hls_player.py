@@ -80,7 +80,8 @@ class HlsPlayer(ui.element):
             # is generated internally (player_id + go2rtc stream_url), not from
             # user input.
             player_id = f"hls_player_{id(self)}"
-            ui.html(f"""
+            ui.html(
+                f"""
 <video id="{player_id}" controls muted
        style="width:100%; max-height:360px; background:#000; border-radius:4px;">
 </video>
@@ -97,7 +98,9 @@ class HlsPlayer(ui.element):
   }}
 }})();
 </script>
-""", sanitize=False)
+""",
+                sanitize=False,
+            )
 
     def set_stream_url(self, url: str) -> None:
         """Update the stream URL and rebuild the player element."""

@@ -13,10 +13,10 @@ from typing import Any
 from unittest.mock import MagicMock
 
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _fake_session() -> MagicMock:
     return MagicMock(name="session")
@@ -108,7 +108,9 @@ class TestDashboardPage:
         await dashboard.dashboard_page()
         bridge.make_session.assert_not_called()
 
-    async def test_async_get_cameras_raises_shows_error(self, fake_nicegui: Any) -> None:
+    async def test_async_get_cameras_raises_shows_error(
+        self, fake_nicegui: Any
+    ) -> None:
         """If async_get_cameras raises, _build_error_state is shown."""
         from bosch_camera_frontend.pages import dashboard
         from nicegui import app
@@ -179,7 +181,11 @@ class TestDashboardPage:
         from nicegui import app
 
         cam1 = _fake_cam()
-        cam2 = {**_fake_cam(), "id": "22222222-3333-4444-5555-666666666666", "name": "Cam Two"}
+        cam2 = {
+            **_fake_cam(),
+            "id": "22222222-3333-4444-5555-666666666666",
+            "name": "Cam Two",
+        }
         cfg = _make_cfg(cam1)
         app.storage.general.clear()
         app.storage.general["cfg"] = cfg
@@ -453,7 +459,9 @@ class TestSettingsDoReload:
         bridge = MagicMock()
         bridge.detect_lang.return_value = "en"
         bridge.check_token_age.return_value = "✅ ok"
-        bridge.reload_config_and_token = MagicMock(return_value=(cfg, "header.payload.signature"))
+        bridge.reload_config_and_token = MagicMock(
+            return_value=(cfg, "header.payload.signature")
+        )
         settings.cli_bridge = bridge
 
         reload_fn_holder: list[Any] = []
@@ -478,9 +486,7 @@ class TestSettingsDoReload:
 class TestSettingsSaveLanguage:
     """Exercise _save_language via on_change callback on ui.select."""
 
-    def _install_capturing_select(
-        self, ui: Any, on_change_holder: list[Any]
-    ) -> Any:
+    def _install_capturing_select(self, ui: Any, on_change_holder: list[Any]) -> Any:
         original_select = ui.select
 
         def capturing_select(*a: Any, **kw: Any) -> Any:
@@ -722,9 +728,7 @@ class TestCameraDetailPage:
         await camera_detail.camera_detail_page("Test%20Cam")
         bridge.make_session.assert_called_once()
 
-    async def test_cam_with_light_builds_light_section(
-        self, fake_nicegui: Any
-    ) -> None:
+    async def test_cam_with_light_builds_light_section(self, fake_nicegui: Any) -> None:
         """has_light=True -> light section rendered."""
         from bosch_camera_frontend.pages import camera_detail
         from nicegui import app
@@ -850,21 +854,29 @@ class TestCameraDetailLoadSnapshot:
         bridge.async_get_privacy_mode = _priv
 
         if proxy_raises is not None:
+
             async def _proxy(*_a: Any, **_kw: Any) -> bytes:
                 raise proxy_raises  # type: ignore[misc]
+
             bridge.async_snap_from_proxy = _proxy
         else:
+
             async def _proxy_ok(*_a: Any, **_kw: Any) -> bytes | None:
                 return proxy_return  # type: ignore[return-value]
+
             bridge.async_snap_from_proxy = _proxy_ok
 
         if events_return is not None:
+
             async def _events(*_a: Any, **_kw: Any) -> tuple[bytes | None, str]:
                 return events_return  # type: ignore[return-value]
+
             bridge.async_snap_from_events = _events
         else:
+
             async def _events_none(*_a: Any, **_kw: Any) -> tuple[None, str]:
                 return None, ""
+
             bridge.async_snap_from_events = _events_none
 
         async def _ev_list(*_a: Any, **_kw: Any) -> list[Any]:
@@ -1002,11 +1014,14 @@ class TestCameraDetailLoadPrivacy:
         original_switch = ui.switch
 
         timer_calls_local: list[Any] = []
-        capturing_timer_fn = lambda *a, **kw: (  # noqa: E731
-            timer_calls_local.append(a[1] if len(a) > 1 else kw.get("callback"))
-            if kw.get("once")
-            else None
-        ) or original_timer(*a, **kw)
+        capturing_timer_fn = lambda *a, **kw: (
+            (  # noqa: E731
+                timer_calls_local.append(a[1] if len(a) > 1 else kw.get("callback"))
+                if kw.get("once")
+                else None
+            )
+            or original_timer(*a, **kw)
+        )
 
         ui.timer = capturing_timer_fn  # type: ignore[assignment]
         try:
@@ -1181,9 +1196,7 @@ class TestCameraDetailTogglePrivacy:
 
     async def test_toggle_privacy_success(self, fake_nicegui: Any) -> None:
         """_toggle_privacy ok=True -> label updated."""
-        switch_holder = await self._run_page_capture_switch(
-            fake_nicegui, (True, None)
-        )
+        switch_holder = await self._run_page_capture_switch(fake_nicegui, (True, None))
         if switch_holder:
             event = types.SimpleNamespace(value=True)
             result = switch_holder[0](event)
@@ -1240,12 +1253,16 @@ class TestCameraDetailLoadEvents:
         bridge.async_snap_from_events = _ev_none
 
         if events_raise is not None:
+
             async def _events_raise(*_a: Any, **_kw: Any) -> list[Any]:
                 raise events_raise  # type: ignore[misc]
+
             bridge.async_api_get_events = _events_raise
         else:
+
             async def _events_ok(*_a: Any, **_kw: Any) -> list[Any]:
                 return events_return  # type: ignore[return-value]
+
             bridge.async_api_get_events = _events_ok
 
         from bosch_camera_frontend.pages import camera_detail

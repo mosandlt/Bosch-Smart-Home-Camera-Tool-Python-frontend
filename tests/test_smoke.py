@@ -48,37 +48,68 @@ def _mock_nicegui():
     ng.ui.timer = MagicMock()
     ng.ui.label = MagicMock(return_value=MagicMock())
     ng.ui.image = MagicMock(return_value=MagicMock())
-    ng.ui.card = MagicMock(return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock()))
-    ng.ui.row = MagicMock(return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock()))
-    ng.ui.column = MagicMock(return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock()))
-    ng.ui.grid = MagicMock(return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock()))
-    ng.ui.expansion = MagicMock(return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock()))
+    ng.ui.card = MagicMock(
+        return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock())
+    )
+    ng.ui.row = MagicMock(
+        return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock())
+    )
+    ng.ui.column = MagicMock(
+        return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock())
+    )
+    ng.ui.grid = MagicMock(
+        return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock())
+    )
+    ng.ui.expansion = MagicMock(
+        return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock())
+    )
     ng.ui.button = MagicMock(return_value=MagicMock())
     ng.ui.switch = MagicMock(return_value=MagicMock())
     ng.ui.select = MagicMock(return_value=MagicMock())
     ng.ui.badge = MagicMock(return_value=MagicMock())
     ng.ui.icon = MagicMock(return_value=MagicMock())
-    ng.ui.header = MagicMock(return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock()))
-    ng.ui.footer = MagicMock(return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock()))
+    ng.ui.header = MagicMock(
+        return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock())
+    )
+    ng.ui.footer = MagicMock(
+        return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock())
+    )
     ng.ui.html = MagicMock(return_value=MagicMock())
-    ng.ui.table = MagicMock(return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock()))
+    ng.ui.table = MagicMock(
+        return_value=MagicMock(__enter__=lambda s, *a: s, __exit__=MagicMock())
+    )
     ng.ui.slider = MagicMock(return_value=MagicMock())
     ng.ui.tooltip = MagicMock(return_value=MagicMock())
-    ng.ui.element = type("element", (), {
-        "__init__": lambda self, *a, **kw: None,
-        "clear": MagicMock(),
-        "__enter__": lambda s, *a: s,
-        "__exit__": MagicMock(),
-    })
+    ng.ui.element = type(
+        "element",
+        (),
+        {
+            "__init__": lambda self, *a, **kw: None,
+            "clear": MagicMock(),
+            "__enter__": lambda s, *a: s,
+            "__exit__": MagicMock(),
+        },
+    )
 
     # NiceGUI context manager helpers
     class _FakeCard:
-        def __init__(self, *a, **kw): pass
-        def classes(self, *a, **kw): return self
-        def style(self, *a, **kw): return self
-        def props(self, *a, **kw): return self
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
+        def __init__(self, *a, **kw):
+            pass
+
+        def classes(self, *a, **kw):
+            return self
+
+        def style(self, *a, **kw):
+            return self
+
+        def props(self, *a, **kw):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
 
     ng.ui.card = _FakeCard
 
@@ -108,10 +139,12 @@ class TestAppImportsCleanly:
     def test_package_importable(self):
         """bosch_camera_frontend package imports without error."""
         import bosch_camera_frontend  # noqa: F401
+
         assert hasattr(bosch_camera_frontend, "__version__")
 
     def test_version_is_alpha(self):
         import bosch_camera_frontend
+
         # Must match the released pyproject version and stay an alpha ("a").
         assert bosch_camera_frontend.__version__ == "0.1.1a0"
         assert "a" in bosch_camera_frontend.__version__
@@ -133,6 +166,7 @@ class TestCliBridgeFindsModule:
         """cli_bridge._ensure_cli_available succeeds when BOSCH_CAMERA_CLI_PATH is valid."""
         with patch.dict(os.environ, {"BOSCH_CAMERA_CLI_PATH": CLI_PATH}):
             from bosch_camera_frontend import _inject_cli_path
+
             # Should not raise
             _inject_cli_path(CLI_PATH)
             assert CLI_PATH in sys.path
@@ -142,6 +176,7 @@ class TestCliBridgeFindsModule:
         if CLI_PATH not in sys.path:
             sys.path.insert(0, CLI_PATH)
         import bosch_camera  # type: ignore[import]
+
         assert hasattr(bosch_camera, "load_config")
 
     def test_bosch_i18n_importable_after_inject(self):
@@ -149,6 +184,7 @@ class TestCliBridgeFindsModule:
         if CLI_PATH not in sys.path:
             sys.path.insert(0, CLI_PATH)
         import bosch_i18n  # type: ignore[import]
+
         assert hasattr(bosch_i18n, "t")
         assert hasattr(bosch_i18n, "set_lang")
         assert hasattr(bosch_i18n, "detect_lang")
@@ -165,6 +201,7 @@ class TestCliBridgeRaisesIfMissing:
             sys.path.remove(bad_path)
 
         from bosch_camera_frontend import _inject_cli_path
+
         with pytest.raises(FileNotFoundError, match="Bosch CLI path not found"):
             _inject_cli_path(bad_path)
 
@@ -174,6 +211,7 @@ class TestCliBridgeRaisesIfMissing:
         os.makedirs(empty_dir, exist_ok=True)
 
         from bosch_camera_frontend import _inject_cli_path
+
         with pytest.raises(ImportError, match="bosch_camera.py not found"):
             _inject_cli_path(empty_dir)
 
@@ -198,6 +236,7 @@ class TestDashboardPageConstructs:
         if CLI_PATH not in sys.path:
             sys.path.insert(0, CLI_PATH)
         from bosch_camera_frontend.pages import dashboard
+
         assert callable(dashboard.dashboard_page)
 
 
@@ -220,6 +259,7 @@ class TestCameraDetailPageConstructs:
         if CLI_PATH not in sys.path:
             sys.path.insert(0, CLI_PATH)
         from bosch_camera_frontend.pages import camera_detail
+
         assert callable(camera_detail.camera_detail_page)
 
 
@@ -242,6 +282,7 @@ class TestSettingsPageConstructs:
         if CLI_PATH not in sys.path:
             sys.path.insert(0, CLI_PATH)
         from bosch_camera_frontend.pages import settings
+
         assert callable(settings.settings_page)
 
 
@@ -255,6 +296,7 @@ class TestCliBridgeFunctions:
     def test_available_langs_constant(self):
         """cli_bridge.AVAILABLE_LANGS contains the 11 CLI languages."""
         from bosch_camera_frontend.adapters.cli_bridge import AVAILABLE_LANGS
+
         assert "en" in AVAILABLE_LANGS
         assert "de" in AVAILABLE_LANGS
         assert "zh-Hans" in AVAILABLE_LANGS
@@ -263,6 +305,7 @@ class TestCliBridgeFunctions:
     def test_t_function_works(self):
         """cli_bridge.t() delegates to bosch_i18n.t()."""
         from bosch_camera_frontend.adapters.cli_bridge import t, set_lang
+
         set_lang("en")
         # A key that definitely exists in translations
         result = t("cmd.status.online", cam_name="Test")
@@ -271,7 +314,11 @@ class TestCliBridgeFunctions:
 
     def test_detect_lang_returns_string(self):
         """cli_bridge.detect_lang returns a valid lang code."""
-        from bosch_camera_frontend.adapters.cli_bridge import detect_lang, AVAILABLE_LANGS
+        from bosch_camera_frontend.adapters.cli_bridge import (
+            detect_lang,
+            AVAILABLE_LANGS,
+        )
+
         cfg = {"language": "de"}
         lang = detect_lang(cfg)
         assert lang in AVAILABLE_LANGS
@@ -279,12 +326,14 @@ class TestCliBridgeFunctions:
     def test_get_token_raises_on_empty_config(self):
         """get_token raises ValueError when no token is in config."""
         from bosch_camera_frontend.adapters.cli_bridge import get_token
+
         with pytest.raises(ValueError, match="No bearer token"):
             get_token({"account": {"bearer_token": ""}})
 
     def test_get_token_returns_token_string(self):
         """get_token returns the token string from config."""
         from bosch_camera_frontend.adapters.cli_bridge import get_token
+
         cfg = {"account": {"bearer_token": "abc.def.ghi"}}
         assert get_token(cfg) == "abc.def.ghi"
 
@@ -308,6 +357,7 @@ class TestHlsPlayerComponent:
         if CLI_PATH not in sys.path:
             sys.path.insert(0, CLI_PATH)
         from bosch_camera_frontend.components.hls_player import _HLS_JS_CDN
+
         # Must contain a version number (not just "latest")
         assert "hls.js@" in _HLS_JS_CDN
         assert "latest" not in _HLS_JS_CDN

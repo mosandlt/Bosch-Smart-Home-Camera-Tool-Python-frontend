@@ -43,25 +43,31 @@ async def dashboard_page() -> None:
 
     # Body background — light neutral, HA/Apple-like
     ui.add_head_html(
-        '<style>body{background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'
+        "<style>body{background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,"
         '"SF Pro Text","Segoe UI",Roboto,sans-serif;}</style>'
     )
 
     # Translucent header bar, Apple-style
-    with ui.header(elevated=False).classes(
-        "items-center justify-between px-6 py-3"
-    ).style("background:rgba(255,255,255,0.85);backdrop-filter:blur(20px);"
-            "border-bottom:1px solid rgba(0,0,0,0.06);color:#111;"):
+    with (
+        ui.header(elevated=False)
+        .classes("items-center justify-between px-6 py-3")
+        .style(
+            "background:rgba(255,255,255,0.85);backdrop-filter:blur(20px);"
+            "border-bottom:1px solid rgba(0,0,0,0.06);color:#111;"
+        )
+    ):
         with ui.row().classes("items-center gap-2"):
             ui.icon("videocam", color="primary").classes("text-2xl")
-            ui.label("Bosch Smart Camera").classes("font-semibold text-lg text-gray-900")
+            ui.label("Bosch Smart Camera").classes(
+                "font-semibold text-lg text-gray-900"
+            )
         with ui.row().classes("gap-1"):
-            ui.button(icon="settings", on_click=lambda: ui.navigate.to("/settings")) \
-                .props("flat round dense color=grey-8").tooltip("Settings")
+            ui.button(
+                icon="settings", on_click=lambda: ui.navigate.to("/settings")
+            ).props("flat round dense color=grey-8").tooltip("Settings")
 
     # Main content — generous padding, max-width for desktop comfort
     with ui.column().classes("w-full max-w-7xl mx-auto px-6 py-8 gap-6"):
-
         if not cfg or not token:
             _build_error_state(
                 "Configuration not loaded. "
@@ -84,7 +90,9 @@ async def dashboard_page() -> None:
             return
 
         if not cameras:
-            with ui.card().classes("rounded-2xl shadow-md p-8 w-full text-center bg-white"):
+            with ui.card().classes(
+                "rounded-2xl shadow-md p-8 w-full text-center bg-white"
+            ):
                 ui.icon("videocam_off", size="3rem", color="grey")
                 ui.label("No cameras found.").classes("text-gray-500 mt-2")
                 ui.label(
@@ -92,9 +100,7 @@ async def dashboard_page() -> None:
                 ).classes("text-xs text-gray-400 mt-1")
             return
 
-        with ui.grid(columns=1).classes(
-            "w-full sm:grid-cols-2 lg:grid-cols-3 gap-5"
-        ):
+        with ui.grid(columns=1).classes("w-full sm:grid-cols-2 lg:grid-cols-3 gap-5"):
             for cam_name, cam_info in cameras.items():
                 CameraCard(
                     cam_info=cam_info,
@@ -104,13 +110,17 @@ async def dashboard_page() -> None:
                 )
 
     # Footer — translucent like the header, minimal
-    with ui.footer(elevated=False).classes(
-        "items-center justify-center px-6 py-3 gap-4"
-    ).style("background:rgba(255,255,255,0.85);backdrop-filter:blur(20px);"
-            "border-top:1px solid rgba(0,0,0,0.06);color:#666;"):
-        ui.button("Reload", icon="refresh",
-                  on_click=lambda: ui.navigate.to("/")) \
-            .props("flat dense color=grey-7")
-        ui.button("Settings", icon="settings",
-                  on_click=lambda: ui.navigate.to("/settings")) \
-            .props("flat dense color=grey-7")
+    with (
+        ui.footer(elevated=False)
+        .classes("items-center justify-center px-6 py-3 gap-4")
+        .style(
+            "background:rgba(255,255,255,0.85);backdrop-filter:blur(20px);"
+            "border-top:1px solid rgba(0,0,0,0.06);color:#666;"
+        )
+    ):
+        ui.button("Reload", icon="refresh", on_click=lambda: ui.navigate.to("/")).props(
+            "flat dense color=grey-7"
+        )
+        ui.button(
+            "Settings", icon="settings", on_click=lambda: ui.navigate.to("/settings")
+        ).props("flat dense color=grey-7")

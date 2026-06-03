@@ -59,7 +59,6 @@ async def camera_detail_page(name: str) -> None:
         ui.label(cam_name).classes("text-white font-bold text-lg")
 
     with ui.column().classes("w-full p-4 gap-4"):
-
         if not cfg or not token:
             ui.notify("Config not loaded. Return to dashboard.", color="negative")
             return
@@ -84,8 +83,10 @@ async def camera_detail_page(name: str) -> None:
 
         # ── Snapshot section ───────────────────────────────────────────────
         with ui.card().classes("w-full p-0 overflow-hidden"):
-            snap_img = ui.image("").classes("w-full").style(
-                "max-height: 400px; object-fit: contain; background: #111;"
+            snap_img = (
+                ui.image("")
+                .classes("w-full")
+                .style("max-height: 400px; object-fit: contain; background: #111;")
             )
             snap_status = ui.label("Loading snapshot…").classes(
                 "text-xs text-gray-400 p-2"
@@ -98,7 +99,9 @@ async def camera_detail_page(name: str) -> None:
                     cam_info, token, hq=True, cfg=cfg
                 )
                 if not data:
-                    data, method = await cli_bridge.async_snap_from_events(session, cam_info)
+                    data, method = await cli_bridge.async_snap_from_events(
+                        session, cam_info
+                    )
                     if data:
                         snap_status.set_text("Snapshot via event history")
                     else:
@@ -122,8 +125,7 @@ async def camera_detail_page(name: str) -> None:
                 "Download Snapshot",
                 icon="download",
                 on_click=lambda: ui.notify(
-                    "Download: use CLI — python3 bosch_camera.py snapshot "
-                    + cam_name,
+                    "Download: use CLI — python3 bosch_camera.py snapshot " + cam_name,
                     color="info",
                 ),
             ).props("dense flat")
@@ -145,9 +147,10 @@ async def camera_detail_page(name: str) -> None:
             ui.label("Controls").classes("font-semibold mb-2")
 
             with ui.grid(columns=2).classes("gap-3"):
-
                 # Privacy toggle
-                privacy_state_label = ui.label("Privacy: loading…").classes("text-sm col-span-2")
+                privacy_state_label = ui.label("Privacy: loading…").classes(
+                    "text-sm col-span-2"
+                )
                 privacy_switch = ui.switch(
                     "Privacy Mode",
                     on_change=lambda e: _toggle_privacy(e),
@@ -165,7 +168,9 @@ async def camera_detail_page(name: str) -> None:
                         privacy_state_label.set_text("Privacy: unavailable")
 
                 async def _toggle_privacy(e: Any) -> None:
-                    ok, err = await cli_bridge.async_set_privacy_mode(session, cam_id, on=e.value)
+                    ok, err = await cli_bridge.async_set_privacy_mode(
+                        session, cam_id, on=e.value
+                    )
                     if ok:
                         mode = "ON 🔒" if e.value else "OFF 👁️"
                         privacy_state_label.set_text(f"Privacy: {mode}")
@@ -206,7 +211,10 @@ async def camera_detail_page(name: str) -> None:
                         "text-sm self-center col-span-2"
                     )
                     ui.slider(
-                        min=-pan_limit, max=pan_limit, step=1, value=0,
+                        min=-pan_limit,
+                        max=pan_limit,
+                        step=1,
+                        value=0,
                         on_change=lambda e: ui.notify(
                             # TODO Phase 2: call cmd_pan equivalent
                             f"Pan to {e.value}° — Phase 2",
@@ -225,7 +233,9 @@ async def camera_detail_page(name: str) -> None:
                 with events_container:
                     events_container.clear()
                     try:
-                        events = await cli_bridge.async_api_get_events(session, cam_id, limit=10)
+                        events = await cli_bridge.async_api_get_events(
+                            session, cam_id, limit=10
+                        )
                     except Exception as exc:
                         ui.label(f"Could not load events: {exc}").classes(
                             "text-sm text-red-500"
@@ -238,9 +248,24 @@ async def camera_detail_page(name: str) -> None:
 
                     with ui.table(
                         columns=[
-                            {"name": "ts", "label": "Time", "field": "ts", "align": "left"},
-                            {"name": "type", "label": "Type", "field": "type", "align": "left"},
-                            {"name": "read", "label": "Read", "field": "read", "align": "center"},
+                            {
+                                "name": "ts",
+                                "label": "Time",
+                                "field": "ts",
+                                "align": "left",
+                            },
+                            {
+                                "name": "type",
+                                "label": "Type",
+                                "field": "type",
+                                "align": "left",
+                            },
+                            {
+                                "name": "read",
+                                "label": "Read",
+                                "field": "read",
+                                "align": "center",
+                            },
                         ],
                         rows=[
                             {

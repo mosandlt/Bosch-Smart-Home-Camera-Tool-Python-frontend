@@ -56,6 +56,10 @@ jobs:
         working-directory: Bosch-Smart-Home-Camera-Tool-Python-frontend
         run: ruff check src/ tests/
 
+      - name: Ruff (format check)
+        working-directory: Bosch-Smart-Home-Camera-Tool-Python-frontend
+        run: ruff format --check src/ tests/
+
       - name: Mypy (strict)
         working-directory: Bosch-Smart-Home-Camera-Tool-Python-frontend
         run: mypy --strict src/bosch_camera_frontend

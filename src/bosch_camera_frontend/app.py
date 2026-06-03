@@ -92,6 +92,7 @@ def _setup_cli_path(cli_path: str | None) -> None:
         os.environ["BOSCH_CAMERA_CLI_PATH"] = cli_path
     # Re-run injection with the (possibly updated) path
     from bosch_camera_frontend import _inject_cli_path
+
     _inject_cli_path(cli_path)
 
 
@@ -189,6 +190,7 @@ def main(argv: list[str] | None = None) -> None:
     # Expose the reloader so pages can trigger it via app.storage.
     nicegui_app.storage.general["__reload_fn_name__"] = "reload_config_and_token"
     import bosch_camera_frontend.adapters.cli_bridge as _br
+
     _br.reload_config_and_token = _reload_config_and_token  # type: ignore[attr-defined]
 
     # Register pages by importing them (side effect: @ui.page decorators register routes)

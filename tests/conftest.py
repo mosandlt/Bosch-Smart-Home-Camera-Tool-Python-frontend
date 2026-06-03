@@ -110,6 +110,7 @@ def _factory(*args: Any, **kwargs: Any) -> FakeElement:
 def _passthrough_decorator(*d_args: Any, **d_kwargs: Any) -> Any:
     """Stand-in for `@ui.page(...)` / `@ui.middleware(...)` — returns the
     function unchanged so the decorated handler stays directly callable."""
+
     def wrap(func: Any) -> Any:
         return func
 
@@ -128,11 +129,38 @@ def build_fake_nicegui() -> types.ModuleType:
 
     # Layout + widgets — all produce a FakeElement.
     for name in (
-        "label", "button", "switch", "select", "slider", "image", "html",
-        "icon", "badge", "table", "separator", "tooltip", "row", "column",
-        "grid", "card", "header", "footer", "expansion", "timer", "notify",
-        "page_title", "add_head_html", "add_css", "add_scss", "add_sass",
-        "input", "number", "chip", "spinner", "link", "markdown",
+        "label",
+        "button",
+        "switch",
+        "select",
+        "slider",
+        "image",
+        "html",
+        "icon",
+        "badge",
+        "table",
+        "separator",
+        "tooltip",
+        "row",
+        "column",
+        "grid",
+        "card",
+        "header",
+        "footer",
+        "expansion",
+        "timer",
+        "notify",
+        "page_title",
+        "add_head_html",
+        "add_css",
+        "add_scss",
+        "add_sass",
+        "input",
+        "number",
+        "chip",
+        "spinner",
+        "link",
+        "markdown",
     ):
         setattr(ui, name, _factory)
 
@@ -164,10 +192,7 @@ def fake_nicegui() -> Any:
     `bosch_camera_frontend` submodules so the next test re-imports cleanly
     against whatever nicegui it expects.
     """
-    saved = {
-        k: sys.modules.get(k)
-        for k in ("nicegui", "nicegui.ui")
-    }
+    saved = {k: sys.modules.get(k) for k in ("nicegui", "nicegui.ui")}
     saved_frontend = {
         k: v for k, v in sys.modules.items() if k.startswith("bosch_camera_frontend")
     }

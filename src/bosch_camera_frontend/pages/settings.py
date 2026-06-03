@@ -34,7 +34,6 @@ async def settings_page() -> None:
         ui.label("Settings").classes("text-white font-bold text-lg")
 
     with ui.column().classes("w-full p-4 gap-4 max-w-2xl mx-auto"):
-
         # ── Config section ────────────────────────────────────────────────
         with ui.card().classes("w-full p-4"):
             ui.label("Configuration").classes("font-semibold text-base mb-2")
@@ -70,11 +69,12 @@ async def settings_page() -> None:
                     ui.notify("Config + token reloaded", color="positive")
                     ui.navigate.to("/settings")
 
-                ui.button("Reload from disk", icon="refresh",
-                          on_click=_do_reload) \
-                    .props("outline dense color=primary") \
-                    .tooltip("Re-read bosch_config.json + refresh token "
-                             "(use after running `python3 bosch_camera.py token fix`)")
+                ui.button(
+                    "Reload from disk", icon="refresh", on_click=_do_reload
+                ).props("outline dense color=primary").tooltip(
+                    "Re-read bosch_config.json + refresh token "
+                    "(use after running `python3 bosch_camera.py token fix`)"
+                )
 
             if cfg:
                 token_status = cli_bridge.check_token_age(cfg)
@@ -125,9 +125,7 @@ async def settings_page() -> None:
                 "zh-Hans": "中文 (简体)",
             }
 
-            current_lang = (
-                cli_bridge.detect_lang(cfg) if cfg else "en"
-            )
+            current_lang = cli_bridge.detect_lang(cfg) if cfg else "en"
             # ui.select with dict options {code: label} works on both NiceGUI
             # 2.x and 3.x (3.x accepts list or dict; verified on 3.12).
             if current_lang not in _LANG_LABELS:
@@ -150,21 +148,26 @@ async def settings_page() -> None:
                         cli_bridge.save_config(cfg)
                         cli_bridge.set_lang(lang)
                         lang_saved_note.set_text("Saved — restart app to apply fully")
-                        ui.notify(f"Language set to {_LANG_LABELS.get(lang, lang)}", color="info")
+                        ui.notify(
+                            f"Language set to {_LANG_LABELS.get(lang, lang)}",
+                            color="info",
+                        )
                     except Exception as exc:
                         lang_saved_note.set_text(f"Save failed: {exc}")
                         ui.notify(f"Could not save config: {exc}", color="negative")
                 else:
-                    ui.notify("No config loaded — cannot save language", color="warning")
+                    ui.notify(
+                        "No config loaded — cannot save language", color="warning"
+                    )
 
         # ── About section ─────────────────────────────────────────────────
         with ui.card().classes("w-full p-4"):
             ui.label("About").classes("font-semibold text-base mb-2")
             with ui.row().classes("items-center gap-2"):
                 ui.icon("info_outline", color="grey")
-                ui.label(
-                    f"Bosch Smart Camera Frontend v{__version__}"
-                ).classes("text-sm")
+                ui.label(f"Bosch Smart Camera Frontend v{__version__}").classes(
+                    "text-sm"
+                )
             ui.label(
                 "Phase 1 skeleton — dashboard, detail, settings. "
                 "Phase 2: live stream + async. Phase 3: events + auth."

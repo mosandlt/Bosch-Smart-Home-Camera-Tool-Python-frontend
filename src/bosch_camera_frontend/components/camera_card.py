@@ -72,15 +72,20 @@ class CameraCard(ui.card):
         # HA/Apple-style: rounded-2xl, soft shadow, no Quasar default border,
         # generous padding. Status communicated via a small colored dot, not a
         # filled badge — keeps the card calm visually.
-        self.classes("rounded-2xl shadow-md p-0 overflow-hidden bg-white "
-                     "hover:shadow-lg transition-shadow duration-200")
+        self.classes(
+            "rounded-2xl shadow-md p-0 overflow-hidden bg-white "
+            "hover:shadow-lg transition-shadow duration-200"
+        )
         self.style("border: none;")
         with self:
             # Snapshot — full-width 16:9 hero area at the top, no margins.
-            self._snapshot_img = ui.image(_PLACEHOLDER_SRC).classes(
-                "w-full cursor-pointer"
-            ).style("aspect-ratio: 16/9; object-fit: cover; "
-                    "background-color: #f1f3f5;")
+            self._snapshot_img = (
+                ui.image(_PLACEHOLDER_SRC)
+                .classes("w-full cursor-pointer")
+                .style(
+                    "aspect-ratio: 16/9; object-fit: cover; background-color: #f1f3f5;"
+                )
+            )
             if self._on_click:
                 self._snapshot_img.on("click", lambda: self._on_click(self._cam_info))
 
@@ -127,12 +132,16 @@ class CameraCard(ui.card):
                         ui.button(
                             icon="refresh",
                             on_click=self._refresh_snapshot,
-                        ).props("flat round dense color=grey-7").tooltip("Refresh snapshot")
+                        ).props("flat round dense color=grey-7").tooltip(
+                            "Refresh snapshot"
+                        )
                         if self._on_click:
                             ui.button(
                                 icon="arrow_forward_ios",
                                 on_click=lambda: self._on_click(self._cam_info),
-                            ).props("flat round dense color=grey-7").tooltip("Open detail")
+                            ).props("flat round dense color=grey-7").tooltip(
+                                "Open detail"
+                            )
 
         # Kick off initial data load
         ui.timer(0.1, self._initial_load, once=True)
@@ -161,11 +170,15 @@ class CameraCard(ui.card):
                 pass
             if online:
                 self._status_badge.set_text("online")
-                self._status_badge.classes(replace="text-xs text-green-600 tracking-wide uppercase")
+                self._status_badge.classes(
+                    replace="text-xs text-green-600 tracking-wide uppercase"
+                )
                 self._set_dot("#22c55e")
             else:
                 self._status_badge.set_text("offline")
-                self._status_badge.classes(replace="text-xs text-gray-400 tracking-wide uppercase")
+                self._status_badge.classes(
+                    replace="text-xs text-gray-400 tracking-wide uppercase"
+                )
                 self._set_dot("#9ca3af")
 
             privacy = await cli_bridge.async_get_privacy_mode(session, cam_id)
@@ -178,7 +191,9 @@ class CameraCard(ui.card):
                     self._suppress_toggle_event = False
         except Exception:
             self._status_badge.set_text("error")
-            self._status_badge.classes(replace="text-xs text-amber-600 tracking-wide uppercase")
+            self._status_badge.classes(
+                replace="text-xs text-amber-600 tracking-wide uppercase"
+            )
             self._set_dot("#f59e0b")
 
     def _set_dot(self, color: str) -> None:
@@ -198,7 +213,9 @@ class CameraCard(ui.card):
             if not data:
                 # Fallback to latest event snapshot
                 session = cli_bridge.make_session(self._token)
-                data, _ = await cli_bridge.async_snap_from_events(session, self._cam_info)
+                data, _ = await cli_bridge.async_snap_from_events(
+                    session, self._cam_info
+                )
             if data:
                 self._snap_bytes = data
                 self._last_snap_ts = now
@@ -224,7 +241,9 @@ class CameraCard(ui.card):
         try:
             session = cli_bridge.make_session(self._token)
             cam_id = self._cam_info.get("id", "")
-            ok, err = await cli_bridge.async_set_privacy_mode(session, cam_id, on=new_state)
+            ok, err = await cli_bridge.async_set_privacy_mode(
+                session, cam_id, on=new_state
+            )
             if ok:
                 self._privacy_on = new_state
                 mode = "ON" if new_state else "OFF"
