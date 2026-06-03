@@ -1014,14 +1014,11 @@ class TestCameraDetailLoadPrivacy:
         original_switch = ui.switch
 
         timer_calls_local: list[Any] = []
-        capturing_timer_fn = lambda *a, **kw: (
-            (  # noqa: E731
+
+        def capturing_timer_fn(*a: Any, **kw: Any) -> Any:
+            if kw.get("once"):
                 timer_calls_local.append(a[1] if len(a) > 1 else kw.get("callback"))
-                if kw.get("once")
-                else None
-            )
-            or original_timer(*a, **kw)
-        )
+            return original_timer(*a, **kw)
 
         ui.timer = capturing_timer_fn  # type: ignore[assignment]
         try:
