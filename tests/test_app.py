@@ -633,3 +633,50 @@ class TestMain:
         self._patch_internals(monkeypatch)
         app_mod.main([])
         assert callable(bridge.reload_config_and_token)  # type: ignore[attr-defined]
+
+    def test_console_banner_html_contains_label_and_version(self) -> None:
+        """_console_banner_html embeds the label and version string."""
+        from bosch_camera_frontend.app import _console_banner_html
+
+        html = _console_banner_html("0.1.1a0")
+        assert "BOSCH-CAMERA-FRONTEND" in html
+        assert "v0.1.1a0" in html
+        assert "<script>" in html
+        assert "console.info" in html
+        assert "#ea0016" in html  # Bosch red present in both style args
+
+    def test_console_banner_html_escapes_backtick(self) -> None:
+        """Backticks in the version string are escaped so the template literal is safe."""
+        from bosch_camera_frontend.app import _console_banner_html
+
+        html = _console_banner_html("0.1.1`evil`")
+        # The raw backtick must not appear unescaped inside the template literal.
+        assert "v0.1.1\\`evil\\`" in html
+
+    def test_console_banner_injected_shared_on_main(
+        self, fake_nicegui: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """main() calls ui.add_head_html with shared=True and the current version banner."""
+        import bosch_camera_frontend
+        import bosch_camera_frontend.app as app_mod
+
+        self._patch_internals(monkeypatch)
+
+        head_html_calls: list[tuple[Any, ...]] = []
+
+        def capture_add_head_html(html: str, *, shared: bool = False) -> None:
+            head_html_calls.append((html, shared))
+
+        fake_nicegui.ui.add_head_html = capture_add_head_html  # type: ignore[attr-defined]
+        app_mod.main([])
+
+        # At least one call must be the version banner (shared=True).
+        banner_calls = [
+            (html, sh)
+            for html, sh in head_html_calls
+            if "BOSCH-CAMERA-FRONTEND" in html
+        ]
+        assert len(banner_calls) == 1, "Expected exactly one banner injection"
+        banner_html, is_shared = banner_calls[0]
+        assert is_shared is True, "Banner must be injected with shared=True"
+        assert f"v{bosch_camera_frontend.__version__}" in banner_html

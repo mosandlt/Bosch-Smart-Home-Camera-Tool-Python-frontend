@@ -140,6 +140,32 @@ def _load_config_and_session(
     return cfg, token
 
 
+def _console_banner_html(version: str) -> str:
+    """Return the ``<script>`` snippet that prints the Bosch styled version banner.
+
+    Mirrors the HA card convention (red badge + white version chip).
+    The snippet is injected once via ``ui.add_head_html(..., shared=True)`` so
+    it fires on every page load without duplication.
+
+    Args:
+        version: The frontend version string, e.g. ``"0.1.1a0"``.
+
+    Returns:
+        A ``<script>`` HTML string ready for injection.
+    """
+    # Escape version defensively — it comes from a constant, but be explicit.
+    safe_version = version.replace("\\", "\\\\").replace("`", "\\`")
+    return (
+        "<script>"
+        "console.info("
+        "`%c BOSCH-CAMERA-FRONTEND %c v{version} `,"
+        '"color:#fff;background:#ea0016;font-weight:700;",'
+        '"color:#ea0016;background:#fff;font-weight:700;"'
+        ");"
+        "</script>"
+    ).format(version=safe_version)
+
+
 def main(argv: list[str] | None = None) -> None:
     """Application entry point."""
     logging.basicConfig(
@@ -197,6 +223,11 @@ def main(argv: list[str] | None = None) -> None:
     import bosch_camera_frontend.pages.dashboard  # noqa: F401
     import bosch_camera_frontend.pages.camera_detail  # noqa: F401
     import bosch_camera_frontend.pages.settings  # noqa: F401
+
+    # Inject styled console banner once for all pages (mirrors HA card convention).
+    from bosch_camera_frontend import __version__
+
+    ui.add_head_html(_console_banner_html(__version__), shared=True)
 
     # 4. Start NiceGUI server
     ui.run(
