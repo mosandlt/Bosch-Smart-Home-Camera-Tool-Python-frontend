@@ -3,7 +3,10 @@
 > Desktop & mobile web UI for Bosch Smart Home cameras, built with NiceGUI.
 > Replaces the official iOS/Android app with a browser-based interface.
 
-> **Status: Phase 1 working e2e (v0.1.1-alpha)** — dashboard, camera detail, settings. Live cloud camera-list (no longer hostage to a stale local config), HA/Apple-style design (rounded-2xl cards, 16:9 hero snapshot, soft shadows, translucent header), structured privacy-toggle error reporting ("Camera offline" / "Auth expired" instead of "check token"), in-app Reload-from-disk button on Settings (after running `python3 bosch_camera.py token fix` in a terminal). Phase 2 (live stream) and Phase 3 (events + auth) are next.
+> ⚠️ **Alpha — not on PyPI, install from source** (see [Installation](#installation))
+> Current release: **v0.1.1-alpha** · Phase 1 working end-to-end (dashboard, camera detail, settings). Phase 2 (live stream) and Phase 3 (events + auth) are in progress.
+
+> **Status:** Live cloud camera-list (no longer hostage to a stale local config), HA/Apple-style design (rounded-2xl cards, 16:9 hero snapshot, soft shadows, translucent header), structured privacy-toggle error reporting ("Camera offline" / "Auth expired" instead of "check token"), in-app Reload-from-disk button on Settings (after running `python3 bosch_camera.py token fix` in a terminal).
 >
 > **Engineering:** runs on **NiceGUI 3.12** · cloud I/O is non-blocking (`asyncio.to_thread`) so the UI never freezes during network calls · session secret is generated, never hardcoded · `mypy --strict` clean · **99% test coverage (247 tests)** · CI on Python 3.11–3.13 (`ruff` + `ruff format` + `mypy --strict` + `pytest`).
 >
@@ -65,60 +68,6 @@
 - **FFmpeg is required** for live video — browsers can't play RTSPS directly.
 - **One server, many clients** — NiceGUI supports multi-user access out of the box.
 - **Token management** — handled server-side, auto-renewal on expiry.
-
----
-
-## Planned Features (mapped from iOS app v2.11.2)
-
-### Phase 1 — Core Dashboard
-
-- [ ] Camera status cards (ONLINE/OFFLINE, model, firmware)
-- [ ] Live snapshot display (auto-refresh every 30s)
-- [ ] Event list with thumbnails (last 50 events)
-- [ ] Privacy mode toggle per camera
-- [ ] Camera light toggle (outdoor)
-- [ ] Notification toggle
-- [ ] Token status + auto-renewal indicator
-
-### Phase 2 — Live Video & Controls
-
-- [ ] HLS live video player (FFmpeg RTSP→HLS transcoding)
-- [ ] Pan control slider (CAMERA_360, ±120°)
-- [ ] Auto-follow toggle
-- [ ] Motion sensitivity select
-- [ ] Audio alarm threshold slider
-- [ ] Recording sound toggle
-- [ ] Video quality select (auto/high/low)
-
-### Phase 3 — Events & Alerts
-
-- [ ] Real-time event feed via FCM push
-- [ ] Event detail view (snapshot + video clip)
-- [ ] Clip re-request button (POST /clip_request)
-- [ ] Mark as read / favorite
-- [ ] Event type filter (MOVEMENT, PERSON, AUDIO_ALARM, etc.)
-- [ ] Download events (JPEG + MP4)
-- [ ] Unread event badge
-
-### Phase 4 — Advanced Features
-
-- [ ] Intercom (listen-only audio player)
-- [ ] Siren trigger button (CAMERA_360)
-- [ ] RCP protocol reads (camera info, clock, dimmer)
-- [ ] WiFi signal strength display
-- [ ] Ambient light sensor value
-- [ ] Camera sharing management (friends)
-- [ ] Automation rules editor
-- [ ] Multi-camera grid view
-
-### Phase 5 — Polish
-
-- [ ] Dark mode
-- [ ] Mobile-optimized layout (responsive cards)
-- [ ] PWA support (installable on iOS/Android home screen)
-- [ ] Notification sound on new event
-- [ ] Settings page (token, download path, polling interval)
-- [ ] German + English language toggle
 
 ---
 
@@ -195,6 +144,8 @@ ffmpeg -rtsp_transport tcp -tls_verify 0 \
   /tmp/camera_stream/stream.m3u8
 ```
 
+> **Note:** `-tls_verify 0` applies only to this local proxy hop (FFmpeg → local RTSPS proxy). The underlying Python CLI verifies Bosch cloud TLS using a pinned Bosch CA certificate since CLI v10.10.2.
+
 The NiceGUI server serves the HLS segments, and hls.js in the browser plays them with ~3-5s latency.
 
 **Proxy session refresh:** The Bosch proxy hash expires after ~60s. The server must call `PUT /connection` periodically to get a fresh hash and restart FFmpeg with the new URL.
@@ -266,24 +217,64 @@ pytest -q --cov=src/bosch_camera_frontend --cov-report=term-missing
 
 ---
 
-## Migration to Phase 2/3
+## Roadmap
 
-### Phase 2 — Live Video + Async (next milestone)
+Mapped from iOS app v2.11.2. Phase 1 is shipped in v0.1.1-alpha; items marked ✅ are done.
+
+### Phase 1 — Core Dashboard ✅ (v0.1.1-alpha)
+
+- [x] Camera status cards (ONLINE/OFFLINE, model, firmware)
+- [x] Live snapshot display (auto-refresh every 30s)
+- [x] Event list with thumbnails (last 50 events)
+- [x] Privacy mode toggle per camera
+- [x] Camera light toggle (outdoor)
+- [x] Notification toggle
+- [x] Token status + auto-renewal indicator
+- [x] Async snapshot refresh (non-blocking via `asyncio.to_thread`)
+- [x] Random `storage_secret` generated at first run (env `BOSCH_FRONTEND_STORAGE_SECRET` or per-process random)
+
+### Phase 2 — Live Video & Controls (next milestone)
+
 - [ ] go2rtc subprocess manager (RTSPS → HLS segments)
 - [ ] HlsPlayer component fully wired (no-go2rtc prompt → real player)
-- [x] Async snapshot refresh (non-blocking via `asyncio.to_thread`) ✅ done in v0.1.1-alpha
-- [ ] Pan slider wired to Bosch `cmd_pan` equivalent
+- [ ] Pan control slider (CAMERA_360, ±120°) wired to Bosch `cmd_pan` equivalent
 - [ ] Light toggle + notifications toggle wired to live API
+- [ ] Auto-follow toggle
+- [ ] Motion sensitivity select
+- [ ] Audio alarm threshold slider
+- [ ] Recording sound toggle
+- [ ] Video quality select (auto/high/low)
 
-### Phase 3 — Events, Auth, Real-Time
+### Phase 3 — Events, Auth & Real-Time
+
 - [ ] FCM push listener background task (reuse CLI `_watch_fcm_push`)
 - [ ] Real-time event feed in camera detail via NiceGUI WebSocket
 - [ ] HTTP Basic Auth middleware (env-var password)
-- [x] Random `storage_secret` generated at first run ✅ done in v0.1.1-alpha (env `BOSCH_FRONTEND_STORAGE_SECRET` or per-process random)
 - [ ] Event detail view: snapshot + clip download
+- [ ] Clip re-request button (POST /clip_request)
+- [ ] Mark as read / favorite
+- [ ] Event type filter (MOVEMENT, PERSON, AUDIO_ALARM, etc.)
+- [ ] Unread event badge
 
-### Phase 4+ — Advanced Features
-See full roadmap in [Planned Features](#planned-features-mapped-from-ios-app-v2112).
+### Phase 4 — Advanced Features
+
+- [ ] Intercom (listen-only audio player)
+- [ ] Siren trigger button (CAMERA_360)
+- [ ] RCP protocol reads (camera info, clock, dimmer)
+- [ ] WiFi signal strength display
+- [ ] Ambient light sensor value
+- [ ] Camera sharing management (friends)
+- [ ] Automation rules editor
+- [ ] Multi-camera grid view
+
+### Phase 5 — Polish
+
+- [ ] Dark mode
+- [ ] Mobile-optimized layout (responsive cards)
+- [ ] PWA support (installable on iOS/Android home screen)
+- [ ] Notification sound on new event
+- [ ] Settings page (token, download path, polling interval)
+- [ ] German + English language toggle
 
 ---
 
@@ -295,7 +286,6 @@ See full roadmap in [Planned Features](#planned-features-mapped-from-ios-app-v21
 - No Bosch trademarks in the project name (use neutral naming)
 - Firebase API keys are public app identifiers (embedded in every Bosch app install)
 - OAuth client secret is a public app-level key (not a personal credential)
-- See [legal analysis](../research/) for full details
 
 ---
 
