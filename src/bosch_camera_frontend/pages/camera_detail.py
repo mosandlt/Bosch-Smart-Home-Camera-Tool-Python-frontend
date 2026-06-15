@@ -13,13 +13,28 @@ from __future__ import annotations
 
 import base64
 import datetime
+import re
 from typing import Any
 from urllib.parse import unquote
 
 from nicegui import app, ui
 
 from bosch_camera_frontend.adapters import cli_bridge
+from bosch_camera_frontend.adapters.go2rtc_manager import get_manager
+from bosch_camera_frontend.components.live_player import LivePlayer
 from bosch_camera_frontend.components.live_snapshot_player import LiveSnapshotPlayer
+
+
+def _stream_name(cam_name: str, cam_id: str = "") -> str:
+    """go2rtc-safe stream key for a camera (lowercase slug, ``bosch_`` prefix).
+
+    A trailing slice of the camera's unique id is appended so two cameras whose
+    names slug to the same key (e.g. "Eyes Outdoor" / "Eyes-Outdoor") don't
+    collide on one go2rtc stream and cross-wire their video.
+    """
+    slug = re.sub(r"[^a-z0-9]+", "_", cam_name.lower()).strip("_") or "cam"
+    suffix = re.sub(r"[^a-z0-9]+", "", cam_id.lower())[-8:]
+    return f"bosch_{slug}_{suffix}" if suffix else f"bosch_{slug}"
 
 
 def _format_event_ts(ts_str: str) -> str:
@@ -142,13 +157,55 @@ async def camera_detail_page(name: str) -> None:
                     cam_info, token, hq=False, cfg=cfg
                 )
 
-            LiveSnapshotPlayer(_live_frame, cam_name=cam_name, interval=5.0)
-            ui.label(
-                "Near-live snapshot view (~5 s refresh; pauses while the tab is "
-                "hidden to spare the camera's scarce Bosch session budget). True "
-                "WebRTC/HLS with audio needs go2rtc — on the roadmap "
-                "(docs/live-webrtc-plan.md)."
-            ).classes("text-xs text-gray-400 mt-2")
+            live_container = ui.column().classes("w-full")
+            live_status = ui.label("").classes("text-xs text-gray-400 mt-2")
+
+            def _mount_snapshot(reason: str) -> None:
+                with live_container:
+                    LiveSnapshotPlayer(_live_frame, cam_name=cam_name, interval=5.0)
+                live_status.set_text(
+                    f"{reason} Showing near-live snapshots (~5 s refresh; pauses "
+                    "while the tab is hidden to spare the camera's scarce Bosch "
+                    "session budget)."
+                )
+
+            async def _setup_live() -> None:
+                """Prefer real WebRTC via go2rtc; fall back to snapshot tier.
+
+                The rtsps:// URL (with embedded creds) never leaves the server —
+                go2rtc consumes it locally and the browser only gets the go2rtc
+                base URL + stream name.
+                """
+                mgr = get_manager()
+                if not mgr.available:
+                    _mount_snapshot(
+                        "go2rtc not installed (brew install go2rtc for WebRTC + audio)."
+                    )
+                    return
+                try:
+                    info = await cli_bridge.async_get_stream_url(
+                        cam_info, token, hq=False, cfg=cfg
+                    )
+                except Exception:  # noqa: BLE001 — never crash the page on resolve
+                    info = None
+                if not info or not info.get("url"):
+                    _mount_snapshot("Live stream URL unavailable.")
+                    return
+                src_name = _stream_name(cam_name, cam_id)
+                ok = await mgr.async_add_stream(src_name, info["url"])
+                if not ok:
+                    _mount_snapshot("Could not register the stream with go2rtc.")
+                    return
+                with live_container:
+                    LivePlayer(
+                        mgr.base_url, src_name, cam_name=cam_name, audio_default=False
+                    )
+                live_status.set_text(
+                    "WebRTC live (HLS fallback). Audio + Picture-in-Picture appear "
+                    "once the stream is playing."
+                )
+
+            ui.timer(0.1, _setup_live, once=True)
 
         # ── Controls section ───────────────────────────────────────────────
         with ui.card().classes("w-full p-4"):

@@ -353,6 +353,26 @@ class TestMain:
         # Should not raise.
         app_mod.main([])
 
+    def test_main_shutdown_hook_stops_go2rtc(
+        self, fake_nicegui: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The registered on_shutdown handler reaps the go2rtc subprocess."""
+        import bosch_camera_frontend.app as app_mod
+        from bosch_camera_frontend.adapters import go2rtc_manager
+
+        self._patch_internals(monkeypatch)
+
+        captured: list[Any] = []
+        fake_nicegui.app.on_shutdown = lambda fn: captured.append(fn) or fn
+
+        app_mod.main([])
+
+        fake_mgr = MagicMock()
+        monkeypatch.setattr(go2rtc_manager, "get_manager", lambda: fake_mgr)
+        shutdown = next(f for f in captured if f.__name__ == "_on_shutdown")
+        shutdown()
+        fake_mgr.stop.assert_called_once()
+
     def test_main_passes_host_and_port_to_ui_run(
         self, fake_nicegui: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:

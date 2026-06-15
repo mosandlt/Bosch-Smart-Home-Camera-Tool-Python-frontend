@@ -197,6 +197,14 @@ def main(argv: list[str] | None = None) -> None:
         nicegui_app.storage.general["token"] = token
         nicegui_app.storage.general["config_path"] = _config_path or "(CLI default)"
 
+    @nicegui_app.on_shutdown
+    def _on_shutdown() -> None:
+        # Reap the shared go2rtc subprocess on graceful exit (complements the
+        # atexit + SIGTERM hooks wired in go2rtc_manager.get_manager).
+        from bosch_camera_frontend.adapters.go2rtc_manager import get_manager
+
+        get_manager().stop()
+
     def _reload_config_and_token() -> tuple[dict[str, Any], str] | None:
         """Re-read bosch_config.json + refresh token. Updates app storage in
         place so all pages see the new state on next render. Used by the
