@@ -1,20 +1,23 @@
 """Bosch Smart Home Camera — NiceGUI Frontend.
 
-Injects the Bosch CLI repo into sys.path so its modules can be imported
-directly without packaging it as a dependency.
+Makes the Bosch CLI module (``bosch_camera``) importable for the bridge.
 
-Priority order for CLI path:
-1. BOSCH_CAMERA_CLI_PATH environment variable
-2. Default sibling directory (../Bosch-Smart-Home-Camera-Tool-Python)
+Resolution order:
+1. Explicit ``--cli-path`` override (dev sibling checkout) — always wins.
+2. ``bosch_camera`` already importable — e.g. installed via the
+   ``bosch-smart-home-camera-tool`` PyPI dependency. No path injection needed.
+3. Default sibling directory (../Bosch-Smart-Home-Camera-Tool-Python) for a
+   side-by-side dev layout without a pip install.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import sys
 
-# Keep in sync with pyproject.toml [project].version (released v0.1.1-alpha).
-__version__ = "0.1.1a0"
+# Keep in sync with pyproject.toml [project].version.
+__version__ = "0.1.2a0"
 
 # ── CLI path resolution ────────────────────────────────────────────────────────
 # The Python CLI repo must be on sys.path for `from bosch_camera import ...` to
@@ -40,10 +43,18 @@ def _inject_cli_path(path: str | None = None) -> None:
 
     Idempotent — won't add duplicates.
 
+    When *path* is None and ``bosch_camera`` is already importable (installed
+    via the bosch-smart-home-camera-tool dependency, or already on sys.path),
+    this is a no-op — no sibling directory is required.
+
     Raises:
-        FileNotFoundError: if the path does not exist.
+        FileNotFoundError: if an explicit/default path does not exist.
         ImportError: if bosch_camera.py is not found inside the path.
     """
+    # If the CLI is installed as a package, bosch_camera resolves without any
+    # path juggling. Only an explicit override (path) forces the sibling layout.
+    if path is None and importlib.util.find_spec("bosch_camera") is not None:
+        return
     resolved = os.path.abspath(path or BOSCH_CAMERA_CLI_PATH)
     if not os.path.isdir(resolved):
         raise FileNotFoundError(
@@ -56,6 +67,10 @@ def _inject_cli_path(path: str | None = None) -> None:
             f"bosch_camera.py not found in {resolved!r}\n"
             "Check that BOSCH_CAMERA_CLI_PATH points to the Python CLI repo root."
         )
+    # An explicit override must win even if a pip-installed bosch_camera was
+    # already imported: evict it so the next import resolves from *resolved*.
+    if path is not None:
+        sys.modules.pop("bosch_camera", None)
     if resolved not in sys.path:
         sys.path.insert(0, resolved)
 

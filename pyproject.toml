@@ -15,6 +15,10 @@ dependencies = [
     "urllib3>=1.26",
     # Transitive runtime dep via the CLI bridge (bosch_maintenance -> defusedxml).
     "defusedxml>=0.7.1",
+    # The CLI ships the bosch_camera module the bridge re-exports. As a real
+    # dependency this makes `pip install bosch-camera-frontend` self-contained;
+    # a sibling-checkout dev layout still overrides it via BOSCH_CAMERA_CLI_PATH.
+    "bosch-smart-home-camera-tool>=10.10.2",
 ]
 
 [project.scripts]
@@ -29,6 +33,10 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bosch_camera_frontend"]
+
+# Exclusive allowlist — sdist ships exactly these, never a stray bosch_config.json.
+[tool.hatch.build.targets.sdist]
+only-include = ["src", "tests", "README.md", "LICENSE", "pyproject.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -146,7 +146,7 @@ class TestAppImportsCleanly:
         import bosch_camera_frontend
 
         # Must match the released pyproject version and stay an alpha ("a").
-        assert bosch_camera_frontend.__version__ == "0.1.1a0"
+        assert bosch_camera_frontend.__version__ == "0.1.2a0"
         assert "a" in bosch_camera_frontend.__version__
 
     def test_no_sys_exit_on_import(self):
@@ -170,6 +170,26 @@ class TestCliBridgeFindsModule:
             # Should not raise
             _inject_cli_path(CLI_PATH)
             assert CLI_PATH in sys.path
+
+    def test_explicit_path_evicts_preloaded_pip_cli(self):
+        """An explicit --cli-path override must win even if a pip-installed
+        bosch_camera was already imported into sys.modules."""
+        from types import ModuleType
+
+        from bosch_camera_frontend import _inject_cli_path
+
+        # Simulate a pip-installed CLI already loaded from elsewhere.
+        sentinel = ModuleType("bosch_camera")
+        sentinel.__file__ = "/some/site-packages/bosch_camera.py"
+        sys.modules["bosch_camera"] = sentinel
+        try:
+            _inject_cli_path(CLI_PATH)  # explicit override
+            # The pre-loaded module must have been evicted so the next import
+            # resolves from the injected override path.
+            assert sys.modules.get("bosch_camera") is not sentinel
+            assert CLI_PATH in sys.path
+        finally:
+            sys.modules.pop("bosch_camera", None)
 
     def test_bosch_camera_importable_after_inject(self):
         """bosch_camera module is importable after path injection."""
