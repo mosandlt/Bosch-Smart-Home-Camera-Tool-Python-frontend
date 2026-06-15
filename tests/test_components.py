@@ -1153,3 +1153,138 @@ class TestCameraCardMissingFields:
 
         card = camera_card.CameraCard(cam_info={}, token=_FAKE_TOKEN, cfg=fake_cfg)
         assert card is not None
+
+
+# ---------------------------------------------------------------------------
+# LiveSnapshotPlayer (snapshot-tier near-live player) — 2026-06-15
+# ---------------------------------------------------------------------------
+
+
+class TestLiveSnapshotPlayer:
+    """The snapshot-refresh live player: controls, fetch loop, visibility pause."""
+
+    @staticmethod
+    def _make(fetch=None, **kw):
+        from bosch_camera_frontend.components import live_snapshot_player as m
+
+        async def _default():
+            return b"\xff\xd8jpeg"
+
+        return m.LiveSnapshotPlayer(fetch or _default, cam_name="Test Cam", **kw)
+
+    def test_build_idle_not_playing(self, fake_nicegui):
+        p = self._make()
+        assert p._playing is False
+        assert p._img is not None
+        assert p._play_btn is not None
+
+    def test_interval_clamped_to_min(self, fake_nicegui):
+        p = self._make(interval=0.1)
+        assert p._interval == 0.5
+
+    def test_start_sets_playing(self, fake_nicegui):
+        p = self._make()
+        p.start()
+        assert p._playing is True
+        # idempotent
+        p.start()
+        assert p._playing is True
+
+    def test_stop_clears_playing(self, fake_nicegui):
+        p = self._make()
+        p.start()
+        p.stop()
+        assert p._playing is False
+        assert p._status.text == "Paused"
+
+    def test_toggle_flips(self, fake_nicegui):
+        p = self._make()
+        p.toggle()
+        assert p._playing is True
+        p.toggle()
+        assert p._playing is False
+
+    def test_autostart(self, fake_nicegui):
+        p = self._make(autostart=True)
+        assert p._playing is True
+
+    async def test_tick_with_bytes_sets_source(self, fake_nicegui):
+        calls = {"n": 0}
+
+        async def fetch():
+            calls["n"] += 1
+            return b"\xff\xd8frame"
+
+        p = self._make(fetch)
+        p._playing = True
+        await p._tick()
+        assert calls["n"] == 1
+        assert p._img.source.startswith("data:image/jpeg;base64,")
+        assert p._status.text == "Live ●"
+        assert p._in_flight is False
+
+    async def test_tick_none_shows_retry(self, fake_nicegui):
+        async def fetch():
+            return None
+
+        p = self._make(fetch)
+        p._playing = True
+        await p._tick()
+        assert "retry" in p._status.text.lower()
+
+    async def test_tick_exception_shows_error(self, fake_nicegui):
+        async def fetch():
+            raise RuntimeError("boom")
+
+        p = self._make(fetch)
+        p._playing = True
+        await p._tick()
+        assert "boom" in p._status.text
+        assert p._in_flight is False
+
+    async def test_tick_noop_when_not_playing(self, fake_nicegui):
+        calls = {"n": 0}
+
+        async def fetch():
+            calls["n"] += 1
+            return b"x"
+
+        p = self._make(fetch)
+        p._playing = False
+        await p._tick()
+        assert calls["n"] == 0
+
+    async def test_tick_guard_in_flight(self, fake_nicegui):
+        async def fetch():
+            return b"x"
+
+        p = self._make(fetch)
+        p._playing = True
+        p._in_flight = True
+        await p._tick()  # should bail immediately
+        # source untouched (still None from build)
+        assert p._img.source is None
+
+    def test_visibility_hidden_pauses(self, fake_nicegui):
+        import types as _t
+
+        p = self._make()
+        p.start()
+        p._on_visibility(_t.SimpleNamespace(args={"visible": False}))
+        assert "hidden" in p._status.text.lower()
+
+    def test_visibility_visible_resumes(self, fake_nicegui):
+        import types as _t
+
+        p = self._make()
+        p.start()
+        p._on_visibility(_t.SimpleNamespace(args={"visible": True}))
+        assert p._status.text == "Live ●"
+
+    def test_visibility_ignored_when_not_playing(self, fake_nicegui):
+        import types as _t
+
+        p = self._make()
+        # not playing → visibility event is a no-op (no crash)
+        p._on_visibility(_t.SimpleNamespace(args={"visible": False}))
+        assert p._playing is False

@@ -149,6 +149,7 @@ def build_fake_nicegui() -> types.ModuleType:
         "footer",
         "expansion",
         "timer",
+        "on",
         "notify",
         "page_title",
         "add_head_html",

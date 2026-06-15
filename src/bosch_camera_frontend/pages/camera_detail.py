@@ -19,7 +19,7 @@ from urllib.parse import unquote
 from nicegui import app, ui
 
 from bosch_camera_frontend.adapters import cli_bridge
-from bosch_camera_frontend.components.hls_player import HlsPlayer
+from bosch_camera_frontend.components.live_snapshot_player import LiveSnapshotPlayer
 
 
 def _format_event_ts(ts_str: str) -> str:
@@ -135,10 +135,19 @@ async def camera_detail_page(name: str) -> None:
 
         # ── Live Stream section ────────────────────────────────────────────
         with ui.expansion("Live Stream", icon="live_tv").classes("w-full"):
-            HlsPlayer(stream_url=None, cam_name=cam_name)
+
+            async def _live_frame() -> bytes | None:
+                # Lower-res for the live loop (lighter + faster than the hq still).
+                return await cli_bridge.async_snap_from_proxy(
+                    cam_info, token, hq=False, cfg=cfg
+                )
+
+            LiveSnapshotPlayer(_live_frame, cam_name=cam_name, interval=5.0)
             ui.label(
-                "Live stream requires go2rtc + FFmpeg (Phase 2). "
-                "For now, use the CLI: python3 bosch_camera.py live " + cam_name
+                "Near-live snapshot view (~5 s refresh; pauses while the tab is "
+                "hidden to spare the camera's scarce Bosch session budget). True "
+                "WebRTC/HLS with audio needs go2rtc — on the roadmap "
+                "(docs/live-webrtc-plan.md)."
             ).classes("text-xs text-gray-400 mt-2")
 
         # ── Controls section ───────────────────────────────────────────────

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bosch-camera-frontend"
-version = "0.1.1a0"
+version = "0.1.2a0"
 description = "NiceGUI browser frontend for Bosch Smart Home cameras"
 readme = "README.md"
 license = {text = "MIT"}
