@@ -211,6 +211,24 @@ def snap_from_proxy(
     return cast("bytes | None", _bc().snap_from_proxy(cam_info, token, hq=hq, cfg=cfg))
 
 
+def get_stream_url(
+    cam_info: CameraDict,
+    token: str,
+    hq: bool = False,
+    cfg: ConfigDict | None = None,
+    conn_type: str | None = None,
+) -> dict[str, Any] | None:
+    """Resolve a live RTSP(S) stream URL (go2rtc source) — see live-webrtc-plan.md.
+
+    Returns ``{"url", "type", "user", "password"}`` or ``None``. The Digest creds
+    in a Gen2 URL rotate per call, so callers re-resolve on stream failure.
+    """
+    return cast(
+        "dict[str, Any] | None",
+        _bc().get_stream_url(cam_info, token, hq=hq, cfg=cfg, conn_type=conn_type),
+    )
+
+
 def snap_from_events(
     session: "requests.Session", cam_info: CameraDict
 ) -> tuple[bytes | None, str]:
@@ -305,6 +323,19 @@ async def async_snap_from_proxy(
     cam_info: CameraDict, token: str, hq: bool = False, cfg: ConfigDict | None = None
 ) -> bytes | None:
     return await _to_thread(snap_from_proxy, cam_info, token, hq=hq, cfg=cfg)
+
+
+async def async_get_stream_url(
+    cam_info: CameraDict,
+    token: str,
+    hq: bool = False,
+    cfg: ConfigDict | None = None,
+    conn_type: str | None = None,
+) -> dict[str, Any] | None:
+    """Async resolve of a live RTSP(S) stream URL (go2rtc source)."""
+    return await _to_thread(
+        get_stream_url, cam_info, token, hq=hq, cfg=cfg, conn_type=conn_type
+    )
 
 
 async def async_snap_from_events(

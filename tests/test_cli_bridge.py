@@ -41,6 +41,14 @@ def _make_fake_bc(**overrides: Any) -> types.SimpleNamespace:
         api_get_camera=MagicMock(return_value=None),
         snap_from_proxy=MagicMock(return_value=b"bytes"),
         snap_from_events=MagicMock(return_value=(b"bytes", "url")),
+        get_stream_url=MagicMock(
+            return_value={
+                "url": "rtsp://192.168.0.9:443/rtsp_tunnel",
+                "type": "LOCAL",
+                "user": "",
+                "password": "",
+            }
+        ),
     )
     for k, v in overrides.items():
         setattr(ns, k, v)
@@ -1262,3 +1270,45 @@ class TestEnsureCliAvailable:
                 sys.modules["bosch_camera"] = saved
             if saved_i18n is not None:
                 sys.modules["bosch_i18n"] = saved_i18n
+
+
+# ---------------------------------------------------------------------------
+# get_stream_url — live RTSP(S) accessor for the WebRTC player (Phase A)
+# ---------------------------------------------------------------------------
+
+
+class TestGetStreamUrl:
+    """The bridge delegates get_stream_url to the CLI backend (sync + async)."""
+
+    def test_sync_delegates_and_returns(self, monkeypatch) -> None:
+        import bosch_camera_frontend.adapters.cli_bridge as cb
+
+        sentinel = {"url": "rtsps://p:443/h/rtsp_tunnel", "type": "REMOTE",
+                    "user": "u", "password": "p"}
+        fake = _make_fake_bc(get_stream_url=MagicMock(return_value=sentinel))
+        monkeypatch.setattr(cb, "_bc", lambda: fake)
+
+        out = cb.get_stream_url({"id": "c"}, "tok", hq=True, conn_type="REMOTE")
+        assert out == sentinel
+        fake.get_stream_url.assert_called_once_with(
+            {"id": "c"}, "tok", hq=True, cfg=None, conn_type="REMOTE"
+        )
+
+    def test_sync_none_passthrough(self, monkeypatch) -> None:
+        import bosch_camera_frontend.adapters.cli_bridge as cb
+
+        fake = _make_fake_bc(get_stream_url=MagicMock(return_value=None))
+        monkeypatch.setattr(cb, "_bc", lambda: fake)
+        assert cb.get_stream_url({"id": "c"}, "tok") is None
+
+    async def test_async_delegates(self, monkeypatch) -> None:
+        import bosch_camera_frontend.adapters.cli_bridge as cb
+
+        sentinel = {"url": "rtsp://192.168.0.9:443/rtsp_tunnel", "type": "LOCAL",
+                    "user": "", "password": ""}
+        fake = _make_fake_bc(get_stream_url=MagicMock(return_value=sentinel))
+        monkeypatch.setattr(cb, "_bc", lambda: fake)
+
+        out = await cb.async_get_stream_url({"id": "c"}, "tok")
+        assert out == sentinel
+        assert fake.get_stream_url.called
