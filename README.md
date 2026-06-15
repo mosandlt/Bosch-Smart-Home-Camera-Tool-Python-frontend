@@ -4,11 +4,11 @@
 > Replaces the official iOS/Android app with a browser-based interface.
 
 > ⚠️ **Alpha — not on PyPI, install from source** (see [Installation](#installation))
-> Current release: **v0.1.1-alpha** · Phase 1 working end-to-end (dashboard, camera detail, settings). Phase 2 (live stream) and Phase 3 (events + auth) are in progress.
+> Current release: **v0.1.2-alpha** · Phase 1 working end-to-end (dashboard, camera detail, settings). Phase 2 **live video has landed**: a snapshot-tier near-live view plus an optional real **WebRTC/HLS player** (via go2rtc) with audio, Picture-in-Picture and fullscreen. Phase 3 (FCM push events + in-app auth) is next.
 
-> **Status:** Live cloud camera-list (no longer hostage to a stale local config), HA/Apple-style design (rounded-2xl cards, 16:9 hero snapshot, soft shadows, translucent header), structured privacy-toggle error reporting ("Camera offline" / "Auth expired" instead of "check token"), in-app Reload-from-disk button on Settings (after running `python3 bosch_camera.py token fix` in a terminal).
+> **Status:** Live cloud camera-list (no longer hostage to a stale local config), HA/Apple-style design (rounded-2xl cards, 16:9 hero snapshot, soft shadows, translucent header), structured privacy-toggle error reporting ("Camera offline" / "Auth expired" instead of "check token"), in-app Reload-from-disk button on Settings (after running `python3 bosch_camera.py token fix` in a terminal). The camera-detail Live Stream section now plays real WebRTC when [go2rtc](https://github.com/AlexxIT/go2rtc) is installed and falls back to a ~5 s snapshot loop otherwise.
 >
-> **Engineering:** runs on **NiceGUI 3.12** · cloud I/O is non-blocking (`asyncio.to_thread`) so the UI never freezes during network calls · session secret is generated, never hardcoded · `mypy --strict` clean · **99% test coverage (247 tests)** · CI on Python 3.11–3.13 (`ruff` + `ruff format` + `mypy --strict` + `pytest`).
+> **Engineering:** runs on **NiceGUI 3.12** · cloud I/O is non-blocking (`asyncio.to_thread`) so the UI never freezes during network calls · the rtsps URL (with embedded creds) stays server-side — the browser only ever gets the go2rtc base URL + stream name · session secret is generated, never hardcoded · `mypy --strict` clean · **99% test coverage** · CI on Python 3.11–3.13 (`ruff` + `ruff format` + `mypy --strict` + `pytest`).
 >
 > **Interested? Let me know!** Open an [issue](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend/issues) or start a [discussion](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend/discussions). Feature requests, ideas, and pull requests are welcome.
 
@@ -104,13 +104,17 @@ Bosch-Smart-Home-Camera-Tool-Python-frontend/
     app.py                 — NiceGUI app entry point (argparse, ui.run)
     adapters/
       cli_bridge.py        — typed re-export of bosch_camera.py + async_* twins
+      go2rtc_manager.py    — shared go2rtc subprocess (spawn, REST add/remove stream)
+      stream_session.py    — keeps a go2rtc registration fresh vs Gen2 cred rotation
     pages/
       dashboard.py         — camera overview grid
-      camera_detail.py     — single-camera view (snapshot, controls, events)
+      camera_detail.py     — single-camera view (snapshot, live stream, controls, events)
       settings.py          — config / token status / language
     components/
       camera_card.py       — camera status card widget
-      hls_player.py         — hls.js video player component (Phase 2 stub)
+      live_player.py       — go2rtc WebRTC/HLS player (ported from the ioBroker engine)
+      live_snapshot_player.py — snapshot-refresh near-live view (no-go2rtc fallback)
+      hls_player.py        — legacy hls.js placeholder (superseded by live_player)
   tests/                   — pytest suite (conftest fake-NiceGUI harness, 99% cov)
   .github/workflows/ci.yml — ruff + ruff format + mypy --strict + pytest
   requirements.txt
@@ -119,36 +123,42 @@ Bosch-Smart-Home-Camera-Tool-Python-frontend/
 
 ---
 
-## HLS Live Video — How It Works
+## Live Video (WebRTC + HLS) — How It Works
 
-Browsers cannot play RTSPS streams directly. The solution:
+Browsers cannot play RTSPS streams directly, so [go2rtc](https://github.com/AlexxIT/go2rtc) bridges the Bosch RTSPS feed to WebRTC (sub-second) with an automatic HLS fallback:
 
 ```
-Camera → Bosch Cloud Proxy → RTSPS stream
+Camera → Bosch Cloud Proxy → rtsps:// stream
                                   │
-                           FFmpeg (server-side)
+                  go2rtc (one shared subprocess, managed by the app)
                                   │
-                        HLS segments (.m3u8 + .ts)
+            WebRTC  ─────────────┴───────────── HLS (.m3u8) fallback
                                   │
-                           NiceGUI serves files
-                                  │
-                        hls.js plays in browser
+              browser <video> (LivePlayer engine: audio · PiP · fullscreen)
 ```
 
-FFmpeg command (server-side):
-```bash
-ffmpeg -rtsp_transport tcp -tls_verify 0 \
-  -i "rtsps://proxy-NN.live.cbs.boschsecurity.com:443/{hash}/rtsp_tunnel?inst=2&enableaudio=1&fmtp=1&maxSessionDuration=3600" \
-  -c:v copy -c:a aac -f hls \
-  -hls_time 2 -hls_list_size 5 -hls_flags delete_segments \
-  /tmp/camera_stream/stream.m3u8
-```
+1. **Resolve** — the app asks the Python CLI (`get_stream_url`) for the camera's
+   `rtsps://` URL via `PUT /connection`.
+2. **Register** — `Go2rtcManager` registers it with go2rtc (`PUT /api/streams`,
+   rewriting `rtsps://`→`rtspx://` so go2rtc skips the Bosch cert hostname check).
+   The URL with embedded creds **stays server-side** — go2rtc consumes it on
+   localhost; the browser only ever receives the go2rtc base URL + stream name.
+3. **Play** — the browser `LivePlayer` (a framework-free port of the live-confirmed
+   ioBroker `Go2rtcStream`: WebRTC-first, HLS fallback, reconnect-keeps-audio,
+   pause-guard, stall-checker) attaches to a `<video>` and signals go2rtc over
+   `POST /api/webrtc`.
 
-> **Note:** `-tls_verify 0` applies only to this local proxy hop (FFmpeg → local RTSPS proxy). The underlying Python CLI verifies Bosch cloud TLS using a pinned Bosch CA certificate since CLI v10.10.2.
+**No go2rtc installed?** The Live Stream section automatically falls back to a
+~5 s snapshot-refresh loop (`LiveSnapshotPlayer`) — still useful, just not video.
 
-The NiceGUI server serves the HLS segments, and hls.js in the browser plays them with ~3-5s latency.
+**Session refresh:** the Bosch session/creds rotate (Gen2 cameras rotate Digest
+creds on every `PUT /connection`, and the proxy hash expires). `StreamSession`
+periodically re-resolves the URL and re-registers the go2rtc source ahead of
+expiry; go2rtc swaps the source in place and the player rides the brief blip.
 
-**Proxy session refresh:** The Bosch proxy hash expires after ~60s. The server must call `PUT /connection` periodically to get a fresh hash and restart FFmpeg with the new URL.
+> **TLS note:** the underlying Python CLI verifies Bosch cloud TLS using a pinned
+> Bosch CA certificate (since CLI v10.10.2). The `rtspx://` rewrite only skips
+> go2rtc's *RTSP-client* hostname check on the already-authenticated media hop.
 
 ---
 
@@ -219,7 +229,7 @@ pytest -q --cov=src/bosch_camera_frontend --cov-report=term-missing
 
 ## Roadmap
 
-Mapped from iOS app v2.11.2. Phase 1 is shipped in v0.1.1-alpha; items marked ✅ are done.
+Mapped from iOS app v2.11.2. Phase 1 shipped in v0.1.1-alpha; the live-video core of Phase 2 landed in v0.1.2-alpha. Items marked ✅ are done.
 
 ### Phase 1 — Core Dashboard ✅ (v0.1.1-alpha)
 
@@ -233,17 +243,20 @@ Mapped from iOS app v2.11.2. Phase 1 is shipped in v0.1.1-alpha; items marked �
 - [x] Async snapshot refresh (non-blocking via `asyncio.to_thread`)
 - [x] Random `storage_secret` generated at first run (env `BOSCH_FRONTEND_STORAGE_SECRET` or per-process random)
 
-### Phase 2 — Live Video & Controls (next milestone)
+### Phase 2 — Live Video & Controls (in progress)
 
-- [ ] go2rtc subprocess manager (RTSPS → HLS segments)
-- [ ] HlsPlayer component fully wired (no-go2rtc prompt → real player)
-- [ ] Pan control slider (CAMERA_360, ±120°) wired to Bosch `cmd_pan` equivalent
-- [ ] Light toggle + notifications toggle wired to live API
+- [x] go2rtc subprocess manager (`Go2rtcManager`: spawn, REST add/remove stream)
+- [x] WebRTC/HLS player wired (`LivePlayer`, ported from the ioBroker engine) with audio, Picture-in-Picture, fullscreen
+- [x] Snapshot-tier near-live fallback when go2rtc is absent (`LiveSnapshotPlayer`)
+- [x] Session/credential refresh vs Gen2 rotation (`StreamSession`)
+- [ ] Pan control slider (CAMERA_360) wired to Bosch `cmd_pan` (currently a stub)
+- [ ] Light toggle + notifications toggle wired to live API (currently stubs)
 - [ ] Auto-follow toggle
 - [ ] Motion sensitivity select
 - [ ] Audio alarm threshold slider
 - [ ] Recording sound toggle
 - [ ] Video quality select (auto/high/low)
+- [ ] Live runtime verification on real hardware (go2rtc + camera + browser)
 
 ### Phase 3 — Events, Auth & Real-Time
 
@@ -288,6 +301,48 @@ Mapped from iOS app v2.11.2. Phase 1 is shipped in v0.1.1-alpha; items marked �
 - OAuth client secret is a public app-level key (not a personal credential)
 
 ---
+
+## Integration Comparison
+
+How this tool compares to the rest of the Bosch Smart Home Camera ecosystem (Home Assistant integration, Python CLI, ioBroker adapter, MCP server, this NiceGUI frontend, and the Node-RED nodes):
+
+| Feature | [Home Assistant Integration](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-HomeAssistant) | [Python CLI Tool](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python) | [ioBroker Adapter](https://github.com/mosandlt/ioBroker.bosch-smart-home-camera) | [MCP Server](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-MCP) | [Frontend (NiceGUI)](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend) | [Node-RED](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-NodeRED) |
+|---|---|---|---|---|---|---|
+| **Maturity** | v13.5+ — HA Quality Scale **Platinum** | v10.10+ stable (Mini-NVR BETA) | v1.5+ stable · npm | v1.5+ stable · PyPI | v0.1.2 **alpha** · PyPI parked | v0.2.3 **alpha** · npm |
+| **Platform** | Home Assistant (HACS) | Standalone Python 3.10+ CLI | ioBroker (npm) | Python 3.10+ · pipx / uvx · stdio + streamable-HTTP for MCP clients (Claude Desktop, Claude Code, custom) | NiceGUI web app · Python 3.10+ | Node-RED palette · npm |
+| **Login** | OAuth2 PKCE (browser) | OAuth2 PKCE (browser) | OAuth2 PKCE (browser) | OAuth2 PKCE (browser, one-time) | ◑ shares CLI `bosch_config.json` | ◑ refresh-token from CLI |
+| **Snapshots** | ✅ Native `Camera.image` | ✅ `snapshot` command | ✅ File-store + base64 DP | ✅ `bosch_camera_snapshot` (LAN-only) | ✅ live + event fallback | ✅ `snapshot` node |
+| **Live RTSP stream (LAN)** | ✅ via HA Stream component | ✅ ffmpeg/RTSPS output | ✅ TLS proxy → local RTSP | ✅ `bosch_camera_stream_url` (LAN-only, no cloud relay) | ◑ internal (go2rtc) | ◑ `stream-url` node (URL only) |
+| **WebRTC (sub-second latency)** | ✅ via integrated go2rtc | ✅ *(v10.6.0)* `live --webrtc` | ❌ | ❌ | ✅ via go2rtc (else snapshot) | ❌ |
+| **Dual-stream URL (main + sub)** | ✅ `sensor.bosch_<n>_stream_url` + `_sub` *(v12.4.0, opt-in per cam)* | ✅ `info` shows both · `live --sub` *(v10.5.0)* | ✅ `stream_url` + `stream_url_sub` *(v0.5.3 experimental)* | ◑ `bosch_camera_stream_url` — main stream only | ❌ *(sub-stream only)* | ◑ URL only — no sub option |
+| **External recorder (BlueIris, Frigate)** | ✅ via go2rtc | ✅ stdout pipe | ✅ Digest-creds URL + LAN bind option | ✅ URL returned, hand off to ffmpeg / go2rtc downstream | ❌ | ◑ `stream-url` → wire downstream |
+| **Privacy mode** | ✅ switch entity | ✅ command | ✅ DP | ✅ `bosch_camera_privacy_set` (LAN-fallback via `prefer_local`) | ✅ toggle | ✅ `privacy` node |
+| **Front spotlight (Gen1/Gen2)** | ✅ light entity | ✅ command | ✅ DP | ✅ `bosch_camera_light_set` (LAN-fallback) | ❌ *(Phase 2 stub)* | ❌ |
+| **RGB wallwasher (Gen2 Outdoor II)** | ✅ light w/ RGB | ◑ on/off only — no RGB | ✅ color + brightness DPs | ❌ *(on/off only — RGB not exposed)* | ❌ | ❌ |
+| **Panic-alarm siren** | ✅ button entity *(Gen2 Indoor II)* | ✅ command *(Gen2 Indoor II only)* | ✅ DP | ✅ `bosch_camera_siren_trigger` *(Gen2 Indoor II only)* | ❌ | ❌ |
+| **Image rotation 180°** | ✅ switch | ❌ | ✅ DP | ❌ | ❌ | ❌ |
+| **Motion / person / audio events** | ✅ FCM push + polling fallback | ◑ `watch` command only (events cmd removed) | ✅ FCM push + polling fallback | ✅ `bosch_camera_events` (on-demand pull) | ◑ pull-only events table | ✅ `event` node (poll) |
+| **Motion edge-trigger state** | ✅ `binary_sensor.motion` | n/a | ✅ `motion_active` DP *(v0.5.3)* | n/a *(request-response, no subscription)* | ❌ | ❌ |
+| **Auto-snapshot on motion** | ✅ refreshes Camera entity | n/a | ✅ writes `last_event_image` base64 *(v0.5.3)* | n/a *(no background loop)* | ❌ | ❌ |
+| **Synthetic motion trigger (external sensor)** | ✅ service | n/a | ✅ DP | ❌ | ❌ | ❌ |
+| **Motion zones / privacy masks (read)** | ✅ | ✅ | ✅ read-only *(v1.2.0)* | ❌ | ❌ | ❌ |
+| **Automation rules / schedules (read)** | ✅ | ✅ | ◑ read-only count + JSON *(v1.2.0)* | ❌ | ❌ | ❌ |
+| **Lighting schedule (read)** | ✅ | ✅ | ✅ read *(Gen1-only, v1.2.0)* | ❌ | ❌ | ❌ |
+| **Cloud clip download (history ~30 d)** | ✅ via Media Browser | ❌ | ❌ *(parked — no community request yet)* | ❌ *(intentionally not exposed — large payloads)* | ❌ *(use CLI)* | ◑ `clip_url` in event payload |
+| **Mini-NVR (motion-triggered local recording)** | ✅ *(v11.2.0 BETA)* | ✅ *(v10.7.0 BETA)* | ❌ | ❌ | ❌ | ❌ |
+| **SMB / NAS clip upload** | ✅ | ✅ *(v10.7.0 BETA)* | ❌ | ❌ | ❌ | ❌ |
+| **Camera sharing (friends)** | ✅ services (share / invite / list) | ✅ command | ◑ read-only list *(v1.2.0)* | ❌ *(intentionally not exposed — needs user-driven flow)* | ❌ | ❌ |
+| **Pan / tilt (360° Gen1)** | ✅ services | ✅ command | ✅ `pan_position` DP | ✅ `bosch_camera_pan` | ❌ *(Phase 2 stub)* | ❌ |
+| **Named pan presets (home / left / right / back-left / back-right)** | ✅ opt-in select entity | ✅ `pan --preset` flag | ✅ `pan_preset` DP | ✅ `bosch_camera_pan preset=` | ❌ | ❌ |
+| **Two-way audio / intercom** | ❌ | ✅ command | ❌ | ❌ *(intentionally not exposed — timing-sensitive)* | ❌ | ❌ |
+| **Webhook delivery on events** | ✅ service + opt-in options | ✅ `watch --webhook URL` | ✅ via MQTT bridge | ❌ *(request-response model)* | ❌ | ❌ |
+| **MQTT event bridge (motion / audio / person)** | n/a *(HA event bus native)* | n/a *(single-run)* | ✅ admin-config | n/a | ❌ | ❌ |
+| **Apple HomeKit (via HA Core bridge)** | ✅ documented | n/a | n/a | n/a | n/a | n/a |
+| **Snapshot scheduler / time-lapse** | ✅ examples/ YAML | ✅ cron + ffmpeg examples | ✅ Blockly example | n/a | ❌ | ❌ |
+| **Native dashboard card / widget** | ✅ 2 Lovelace cards (single + grid) | n/a | ✅ 2 vis-2 widgets — BoschCamera + BoschOverview multi-cam | n/a | ✅ *(is itself a web dashboard)* | ❌ |
+| **Cloud-relay REMOTE fallback** | ✅ auto-switch when LAN unreachable | ✅ remote mode | ❌ *(LOCAL-only by design)* | ❌ *(media LAN-only; status/events via cloud)* | ◑ inherits CLI | ◑ REMOTE opt (manual) |
+| **Browser-based admin / config UI** | ✅ HA Config Flow | n/a (CLI) | ✅ JSON-config tabs | n/a (LLM-mediated; config via CLI / MCP client) | ✅ Settings page | ◑ editor config node |
+| **UI languages** | EN · DE · FR · ES · IT · NL · PL · PT · RU · UK · ZH-Hans *(v12.4.0)* | EN · DE · FR · ES · IT · NL · PL · PT · RU · UK · ZH-Hans *(v10.3.0)* | EN · DE · FR · ES · IT · NL · PL · PT · RU · UK · ZH-CN | n/a *(no UI — LLM is the front-end)* | ◑ backend i18n · UI mostly EN | n/a *(English only)* |
 
 ## Related Projects
 
