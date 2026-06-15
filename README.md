@@ -3,7 +3,7 @@
 > Desktop & mobile web UI for Bosch Smart Home cameras, built with NiceGUI.
 > Replaces the official iOS/Android app with a browser-based interface.
 
-> ⚠️ **Alpha — not on PyPI, install from source** (see [Installation](#installation))
+> **Alpha — on PyPI:** `pip install bosch-camera-frontend` (self-contained, pulls the CLI). See [Installation](#installation).
 > Current release: **v0.1.2-alpha** · Phase 1 working end-to-end (dashboard, camera detail, settings). Phase 2 **live video has landed**: a snapshot-tier near-live view plus an optional real **WebRTC/HLS player** (via go2rtc) with audio, Picture-in-Picture and fullscreen. Phase 3 (FCM push events + in-app auth) is next.
 
 > **Status:** Live cloud camera-list (no longer hostage to a stale local config), HA/Apple-style design (rounded-2xl cards, 16:9 hero snapshot, soft shadows, translucent header), structured privacy-toggle error reporting ("Camera offline" / "Auth expired" instead of "check token"), in-app Reload-from-disk button on Settings (after running `python3 bosch_camera.py token fix` in a terminal). The camera-detail Live Stream section now plays real WebRTC when [go2rtc](https://github.com/AlexxIT/go2rtc) is installed and falls back to a ~5 s snapshot loop otherwise.
@@ -166,39 +166,50 @@ expiry; go2rtc swaps the source in place and the player rides the brief blip.
 
 **Prerequisites:**
 - Python 3.10+
-- [Bosch Smart Home Camera Python CLI](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python) cloned as a sibling directory
-- A valid `bosch_config.json` with bearer token (created by first-run wizard in the CLI)
+- A valid `bosch_config.json` with bearer token (created by the first-run wizard in the [Python CLI](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python))
+
+### Option A — install from PyPI (recommended)
+
+```bash
+pip install bosch-camera-frontend
+```
+
+This pulls the CLI (`bosch-smart-home-camera-tool`) in automatically, so the install is self-contained — no sibling checkout needed. Start it with the `bosch-camera-frontend` command (see [Usage](#usage)).
+
+### Option B — from source (development)
 
 ```bash
 # Clone this repo (as sibling to the Python CLI repo)
 git clone https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend
-
-# Create venv and install dependencies
 cd Bosch-Smart-Home-Camera-Tool-Python-frontend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-The frontend auto-discovers the CLI repo in the sibling directory. Override with:
+In a source checkout the frontend auto-discovers the CLI in a sibling directory. Override with:
 ```bash
 export BOSCH_CAMERA_CLI_PATH=/path/to/Bosch-Smart-Home-Camera-Tool-Python
 ```
 
 ## Usage
 
+When installed from PyPI, use the `bosch-camera-frontend` command. From a source checkout, use `python3 -m bosch_camera_frontend.app` (both accept the same flags).
+
 ```bash
 # Start on localhost:8080 (default)
+bosch-camera-frontend
+# or, from source:
 python3 -m bosch_camera_frontend.app
 
 # Custom port + config path
-python3 -m bosch_camera_frontend.app --port 8081 --config /path/to/bosch_config.json
+bosch-camera-frontend --port 8081 --config /path/to/bosch_config.json
 
 # Dev mode with hot-reload
-python3 -m bosch_camera_frontend.app --reload
+bosch-camera-frontend --reload
 
-# Custom CLI repo path
-python3 -m bosch_camera_frontend.app --cli-path /path/to/Bosch-Smart-Home-Camera-Tool-Python
+# Custom CLI repo path (source/dev only)
+bosch-camera-frontend --cli-path /path/to/Bosch-Smart-Home-Camera-Tool-Python
 ```
 
 Open http://localhost:8080 in your browser. The dashboard shows all cameras from your config.
@@ -308,7 +319,7 @@ How this tool compares to the rest of the Bosch Smart Home Camera ecosystem (Hom
 
 | Feature | [Home Assistant Integration](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-HomeAssistant) | [Python CLI Tool](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python) | [ioBroker Adapter](https://github.com/mosandlt/ioBroker.bosch-smart-home-camera) | [MCP Server](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-MCP) | [Frontend (NiceGUI)](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend) | [Node-RED](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-NodeRED) |
 |---|---|---|---|---|---|---|
-| **Maturity** | v13.5+ — HA Quality Scale **Platinum** | v10.10+ stable (Mini-NVR BETA) | v1.5+ stable · npm | v1.5+ stable · PyPI | v0.1.2 **alpha** · PyPI parked | v0.2.3 **alpha** · npm |
+| **Maturity** | v13.5+ — HA Quality Scale **Platinum** | v10.10+ stable (Mini-NVR BETA) | v1.5+ stable · npm | v1.5+ stable · PyPI | v0.1.2 **alpha** · PyPI | v0.2.3 **alpha** · npm |
 | **Platform** | Home Assistant (HACS) | Standalone Python 3.10+ CLI | ioBroker (npm) | Python 3.10+ · pipx / uvx · stdio + streamable-HTTP for MCP clients (Claude Desktop, Claude Code, custom) | NiceGUI web app · Python 3.10+ | Node-RED palette · npm |
 | **Login** | OAuth2 PKCE (browser) | OAuth2 PKCE (browser) | OAuth2 PKCE (browser) | OAuth2 PKCE (browser, one-time) | ◑ shares CLI `bosch_config.json` | ◑ refresh-token from CLI |
 | **Snapshots** | ✅ Native `Camera.image` | ✅ `snapshot` command | ✅ File-store + base64 DP | ✅ `bosch_camera_snapshot` (LAN-only) | ✅ live + event fallback | ✅ `snapshot` node |
