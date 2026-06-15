@@ -21,6 +21,7 @@ from nicegui import app, ui
 
 from bosch_camera_frontend.adapters import cli_bridge
 from bosch_camera_frontend.adapters.go2rtc_manager import get_manager
+from bosch_camera_frontend.adapters.stream_session import StreamSession
 from bosch_camera_frontend.components.live_player import LivePlayer
 from bosch_camera_frontend.components.live_snapshot_player import LiveSnapshotPlayer
 
@@ -169,12 +170,18 @@ async def camera_detail_page(name: str) -> None:
                     "session budget)."
                 )
 
+            async def _resolve_stream() -> dict[str, object] | None:
+                return await cli_bridge.async_get_stream_url(
+                    cam_info, token, hq=False, cfg=cfg
+                )
+
             async def _setup_live() -> None:
                 """Prefer real WebRTC via go2rtc; fall back to snapshot tier.
 
                 The rtsps:// URL (with embedded creds) never leaves the server —
                 go2rtc consumes it locally and the browser only gets the go2rtc
-                base URL + stream name.
+                base URL + stream name. A StreamSession keeps the source fresh
+                against Gen2 credential rotation while the view is open.
                 """
                 mgr = get_manager()
                 if not mgr.available:
@@ -182,19 +189,10 @@ async def camera_detail_page(name: str) -> None:
                         "go2rtc not installed (brew install go2rtc for WebRTC + audio)."
                     )
                     return
-                try:
-                    info = await cli_bridge.async_get_stream_url(
-                        cam_info, token, hq=False, cfg=cfg
-                    )
-                except Exception:  # noqa: BLE001 — never crash the page on resolve
-                    info = None
-                if not info or not info.get("url"):
-                    _mount_snapshot("Live stream URL unavailable.")
-                    return
                 src_name = _stream_name(cam_name, cam_id)
-                ok = await mgr.async_add_stream(src_name, info["url"])
-                if not ok:
-                    _mount_snapshot("Could not register the stream with go2rtc.")
+                session = StreamSession(mgr, _resolve_stream, src_name)
+                if not await session.start():
+                    _mount_snapshot("Live stream unavailable.")
                     return
                 with live_container:
                     LivePlayer(
@@ -204,6 +202,10 @@ async def camera_detail_page(name: str) -> None:
                     "WebRTC live (HLS fallback). Audio + Picture-in-Picture appear "
                     "once the stream is playing."
                 )
+                # Keep the go2rtc source fresh ahead of Bosch session/cred rotation,
+                # and free the Bosch session + go2rtc producer when the tab closes.
+                ui.timer(session.refresh_interval, session.refresh)
+                app.on_disconnect(session.stop)
 
             ui.timer(0.1, _setup_live, once=True)
 

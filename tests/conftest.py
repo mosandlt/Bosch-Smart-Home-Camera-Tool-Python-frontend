@@ -180,6 +180,7 @@ def build_fake_nicegui() -> types.ModuleType:
     app.on_startup = _passthrough_decorator
     app.on_shutdown = _passthrough_decorator
     app.on_connect = _passthrough_decorator
+    app.on_disconnect = _passthrough_decorator
     ng.app = app
 
     return ng
