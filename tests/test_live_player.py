@@ -68,8 +68,9 @@ class TestLivePlayerMount:
         monkeypatch.setattr(
             fake_nicegui.ui,
             "html",
-            lambda *a, **k: calls["html"].append(a[0] if a else None)
-            or fake_nicegui.ui.label(),
+            lambda *a, **k: (
+                calls["html"].append(a[0] if a else None) or fake_nicegui.ui.label()
+            ),
         )
         monkeypatch.setattr(
             fake_nicegui.ui,
@@ -85,7 +86,10 @@ class TestLivePlayerMount:
         from bosch_camera_frontend.components.live_player import LivePlayer
 
         LivePlayer(
-            "http://127.0.0.1:1984", "bosch_terrasse", cam_name="Terrasse", audio_default=True
+            "http://127.0.0.1:1984",
+            "bosch_terrasse",
+            cam_name="Terrasse",
+            audio_default=True,
         )
         # engine injected once into <head>, shared
         assert len(calls["head"]) == 1
@@ -103,7 +107,10 @@ class TestLivePlayerMount:
         from bosch_camera_frontend.components.live_player import LivePlayer
 
         LivePlayer(
-            "http://10.0.0.5:1984", "bosch_garten", cam_name="Garten", audio_default=False
+            "http://10.0.0.5:1984",
+            "bosch_garten",
+            cam_name="Garten",
+            audio_default=False,
         )
         mount = calls["html"][1]
         # The exact json.dumps(opts) string must be embedded in the mount call.

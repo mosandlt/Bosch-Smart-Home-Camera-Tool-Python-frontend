@@ -37,7 +37,8 @@ _HLS_SRI = "sha384-5E8B0pTlZZJMabWpC0fyYf6OUpe15jJij34BqBAh4NXoHAlLNOjCPRrwtOXOQ
 # Ported from the live-confirmed ioBroker Go2rtcStream; the trailing
 # mountBoschLivePlayer() builds a standalone control bar around it.
 _PLAYER_JS = (
-    """
+    (
+        """
 <script>
 (function () {
   if (window.__boschLivePlayer) { return; }
@@ -437,7 +438,10 @@ _PLAYER_JS = (
 })();
 </script>
 """
-).replace("%HLS_URL%", _HLS_CDN_URL).replace("%HLS_SRI%", _HLS_SRI)
+    )
+    .replace("%HLS_URL%", _HLS_CDN_URL)
+    .replace("%HLS_SRI%", _HLS_SRI)
+)
 
 
 class LivePlayer(ui.element):

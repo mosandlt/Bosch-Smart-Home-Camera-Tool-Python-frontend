@@ -134,9 +134,7 @@ class TestSetupLive:
     ) -> None:
         mgr = MagicMock()
         mgr.available = False
-        await _run_setup_live(
-            fake_nicegui, monkeypatch, manager=mgr, stream_info=None
-        )
+        await _run_setup_live(fake_nicegui, monkeypatch, manager=mgr, stream_info=None)
         # never tried to register a stream
         mgr.async_add_stream.assert_not_called()
 
@@ -145,9 +143,7 @@ class TestSetupLive:
     ) -> None:
         mgr = MagicMock()
         mgr.available = True
-        await _run_setup_live(
-            fake_nicegui, monkeypatch, manager=mgr, stream_info=None
-        )
+        await _run_setup_live(fake_nicegui, monkeypatch, manager=mgr, stream_info=None)
         mgr.async_add_stream.assert_not_called()
 
     async def test_resolve_raises_falls_back(
@@ -156,7 +152,11 @@ class TestSetupLive:
         mgr = MagicMock()
         mgr.available = True
         await _run_setup_live(
-            fake_nicegui, monkeypatch, manager=mgr, stream_info=None, resolve_raises=True
+            fake_nicegui,
+            monkeypatch,
+            manager=mgr,
+            stream_info=None,
+            resolve_raises=True,
         )
         mgr.async_add_stream.assert_not_called()
 

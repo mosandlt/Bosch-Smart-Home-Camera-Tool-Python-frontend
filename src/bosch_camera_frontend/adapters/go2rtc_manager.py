@@ -90,7 +90,9 @@ class Go2rtcManager:
         self._webrtc_port = webrtc_port
         self._start_timeout = start_timeout
         self._lock = threading.RLock()  # guards _proc / _cfg_path mutations
-        self._start_lock = threading.Lock()  # serialises spawn+wait, never held by stop()
+        self._start_lock = (
+            threading.Lock()
+        )  # serialises spawn+wait, never held by stop()
         self._proc: subprocess.Popen[bytes] | None = None
         self._cfg_path: str | None = None
         self._reusing_external = False  # True when an already-running go2rtc was reused
@@ -331,7 +333,9 @@ class Go2rtcManager:
             if proc is not None and proc.poll() is not None:
                 return False  # exited prematurely
             try:
-                with socket.create_connection(("127.0.0.1", self._api_port), timeout=0.5):
+                with socket.create_connection(
+                    ("127.0.0.1", self._api_port), timeout=0.5
+                ):
                     pass
             except OSError:
                 time.sleep(0.2)

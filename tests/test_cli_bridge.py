@@ -1283,8 +1283,12 @@ class TestGetStreamUrl:
     def test_sync_delegates_and_returns(self, monkeypatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
 
-        sentinel = {"url": "rtsps://p:443/h/rtsp_tunnel", "type": "REMOTE",
-                    "user": "u", "password": "p"}
+        sentinel = {
+            "url": "rtsps://p:443/h/rtsp_tunnel",
+            "type": "REMOTE",
+            "user": "u",
+            "password": "p",
+        }
         fake = _make_fake_bc(get_stream_url=MagicMock(return_value=sentinel))
         monkeypatch.setattr(cb, "_bc", lambda: fake)
 
@@ -1304,8 +1308,12 @@ class TestGetStreamUrl:
     async def test_async_delegates(self, monkeypatch) -> None:
         import bosch_camera_frontend.adapters.cli_bridge as cb
 
-        sentinel = {"url": "rtsp://192.168.0.9:443/rtsp_tunnel", "type": "LOCAL",
-                    "user": "", "password": ""}
+        sentinel = {
+            "url": "rtsp://192.168.0.9:443/rtsp_tunnel",
+            "type": "LOCAL",
+            "user": "",
+            "password": "",
+        }
         fake = _make_fake_bc(get_stream_url=MagicMock(return_value=sentinel))
         monkeypatch.setattr(cb, "_bc", lambda: fake)
 

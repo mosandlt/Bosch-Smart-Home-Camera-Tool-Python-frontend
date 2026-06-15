@@ -165,7 +165,9 @@ class TestStreamRegistration:
         m = _mgr()
         with (
             patch.object(m, "ensure_running", return_value=True),
-            patch.object(m, "_api_request", return_value=(400, b"yaml: cannot write config")),
+            patch.object(
+                m, "_api_request", return_value=(400, b"yaml: cannot write config")
+            ),
             patch.object(m, "stream_exists", return_value=True),
         ):
             # in-memory stream IS registered → treat 400+yaml as success
@@ -471,7 +473,9 @@ class TestSingleton:
         with (
             patch.object(gm.atexit, "register"),
             patch.object(gm.signal, "getsignal", return_value=None),
-            patch.object(gm.signal, "signal", side_effect=ValueError("not main thread")),
+            patch.object(
+                gm.signal, "signal", side_effect=ValueError("not main thread")
+            ),
         ):
             m = gm.get_manager()  # must not raise
             assert isinstance(m, Go2rtcManager)
