@@ -1,9 +1,31 @@
 # Live WebRTC/HLS player — build plan (Phase 2/3)
 
-STATUS: planned (2026-06-15). Snapshot-tier live view already shipped
-(`components/live_snapshot_player.py`); this doc is the roadmap to bring the
-NiceGUI frontend's live stream to the HA card / ioBroker widget level — real
-WebRTC/HLS video with audio.
+STATUS: BUILT 2026-06-15 (A–E, local commits, unpushed). Snapshot-tier live view
+shipped earlier (`components/live_snapshot_player.py`); the real WebRTC/HLS path
+below is now implemented and unit-tested. NOT YET runtime-verified — that needs
+go2rtc installed + a reachable Bosch camera + a browser (see § Testing); the
+browser engine is parity-verified against the LIVE-confirmed ioBroker player.
+
+## Build status (2026-06-15)
+- [x] **A — CLI stream-URL accessor**: `bosch_camera.get_stream_url()` +
+  `cli_bridge.get_stream_url` / `async_get_stream_url`.
+- [x] **B — go2rtc orchestration**: `adapters/go2rtc_manager.py` (`Go2rtcManager`
+  singleton: idempotent spawn, REST add/remove stream, rtsps→rtspx rewrite,
+  400-yaml soft-success, CORS `origin:"*"`, async wrappers, atexit/SIGTERM/
+  on_shutdown teardown).
+- [x] **C — browser player**: `components/live_player.py` (`LivePlayer` + the
+  `_PLAYER_JS` framework-free port of ioBroker `Go2rtcStream`, all v13.5.17
+  fixes, standalone play/mute/PiP/fullscreen bar, audio+PiP hidden until live).
+- [x] **D — plumbing**: `camera_detail._setup_live` (WebRTC when go2rtc present,
+  else `LiveSnapshotPlayer`; rtsps creds stay server-side).
+- [x] **E — session refresh (option a)**: `adapters/stream_session.py`
+  (`StreamSession`) periodic re-resolve + re-register; refresh timer +
+  on_disconnect cleanup wired in `camera_detail`.
+- [ ] **E (option b) — local TLS-proxy port** for robust Gen2: PARKED (large,
+  needs a live Gen2 camera to validate). Option (a) covers the gap for now.
+- [ ] **Runtime verification**: install go2rtc + open a camera in a browser;
+  confirm WebRTC plays, audio toggle, PiP, HLS fallback, refresh across a
+  >50-min view (Gen2). Version bump is Thomas's call (frontend is alpha).
 
 ## Why it's a project, not a fix
 The Python CLI has NO live-stream backend (only snapshots via `snap_from_proxy` +
