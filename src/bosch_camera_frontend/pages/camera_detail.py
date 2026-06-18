@@ -39,9 +39,18 @@ def _stream_name(cam_name: str, cam_id: str = "") -> str:
 
 
 def _format_event_ts(ts_str: str) -> str:
-    """Best-effort timestamp formatting for event rows."""
+    """Best-effort timestamp formatting for event rows.
+
+    Bosch event timestamps are offset-bearing in Java's ZonedDateTime form,
+    e.g. "2026-06-18T06:06:30.499+02:00[Europe/Berlin]". `fromisoformat`
+    cannot parse the trailing RFC-9557 "[zone]" suffix, so without stripping
+    it every event time fell into the except branch and the raw, ugly string
+    was shown verbatim. Strip the "[zone]" suffix (and map a "Z" to +00:00)
+    before parsing. (Cross-version of HA issue #34.)
+    """
     try:
-        dt = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        clean = ts_str.split("[", 1)[0].replace("Z", "+00:00")
+        dt = datetime.datetime.fromisoformat(clean)
         return dt.strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
         return ts_str

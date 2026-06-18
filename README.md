@@ -4,7 +4,7 @@
 > Replaces the official iOS/Android app with a browser-based interface.
 
 > **Alpha — on PyPI:** `pip install bosch-camera-frontend` (self-contained, pulls the CLI). See [Installation](#installation).
-> Current release: **v0.1.2-alpha** · Phase 1 working end-to-end (dashboard, camera detail, settings). Phase 2 **live video has landed**: a snapshot-tier near-live view plus an optional real **WebRTC/HLS player** (via go2rtc) with audio, Picture-in-Picture and fullscreen. Phase 3 (FCM push events + in-app auth) is next.
+> Current release: **v0.1.3-alpha** · Phase 1 working end-to-end (dashboard, camera detail, settings). Phase 2 **live video has landed**: a snapshot-tier near-live view plus an optional real **WebRTC/HLS player** (via go2rtc) with audio, Picture-in-Picture and fullscreen. Phase 3 (FCM push events + in-app auth) is next.
 
 > **Status:** Live cloud camera-list (no longer hostage to a stale local config), HA/Apple-style design (rounded-2xl cards, 16:9 hero snapshot, soft shadows, translucent header), structured privacy-toggle error reporting ("Camera offline" / "Auth expired" instead of "check token"), in-app Reload-from-disk button on Settings (after running `python3 bosch_camera.py token fix` in a terminal). The camera-detail Live Stream section now plays real WebRTC when [go2rtc](https://github.com/AlexxIT/go2rtc) is installed and falls back to a ~5 s snapshot loop otherwise.
 >
