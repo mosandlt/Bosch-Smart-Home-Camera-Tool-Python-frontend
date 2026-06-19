@@ -146,7 +146,7 @@ class TestAppImportsCleanly:
         import bosch_camera_frontend
 
         # Must match the released pyproject version and stay an alpha ("a").
-        assert bosch_camera_frontend.__version__ == "0.1.3a0"
+        assert bosch_camera_frontend.__version__ == "0.1.4a0"
         assert "a" in bosch_camera_frontend.__version__
 
     def test_no_sys_exit_on_import(self):

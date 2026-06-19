@@ -37,6 +37,38 @@ class TestPlayerJsParity:
         assert "/api/webrtc?src=" in js
         assert "/api/stream.m3u8?src=" in js
 
+    def test_pip_freeze_recovery_wiring(self, fake_nicegui: Any) -> None:
+        """PiP-freeze-on-tab-switch recovery (parity HA v13.7.4 / ioBroker v1.7.2).
+
+        With the live stream in Picture-in-Picture, switching the browser tab froze
+        the floating window because the stall-checker setInterval is throttled in a
+        hidden tab and the go2rtc WebRTC transport can die in the background. These
+        pin the un-throttled, event-driven recovery wiring in the embedded engine.
+        """
+        from bosch_camera_frontend.components.live_player import _PLAYER_JS
+
+        js = _PLAYER_JS
+        # rVFC liveness heartbeat — fires for a PiP window even in a hidden tab
+        assert "requestVideoFrameCallback" in js
+        assert "_boschLastFrameAt = performance.now()" in js
+        assert "cancelVideoFrameCallback" in js
+        assert "_startRvfc" in js and "_stopRvfc" in js
+        # stall checker escalates on a presented-frame freeze, not only .paused
+        assert "var frameFrozen" in js
+        assert "frozen || pausedWhileLive || frameFrozen" in js
+        assert "stallCount >= 3 || frameFrozen" in js
+        # WebRTC video-track mute/unmute -> debounced PiP-safe recovery
+        assert "evt.track.onmute = function" in js
+        assert "evt.track.onunmute = function" in js
+        assert 'evt.track.kind === "video"' in js
+        assert "webrtc video track muted >6s" in js
+        # persistent connectionState=failed recovery (live phase)
+        assert "onconnectionstatechange" in js
+        assert 'connectionState === "failed"' in js
+        # centralised idempotent recovery reusing the SAME <video> element
+        assert "Go2rtcStream.prototype._recover" in js
+        assert "this._recovering" in js
+
     def test_hls_pin_exact_version_and_sri(self, fake_nicegui: Any) -> None:
         from bosch_camera_frontend.components.live_player import (
             _HLS_CDN_URL,

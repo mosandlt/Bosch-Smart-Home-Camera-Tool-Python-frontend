@@ -17,7 +17,7 @@ import os
 import sys
 
 # Keep in sync with pyproject.toml [project].version.
-__version__ = "0.1.3a0"
+__version__ = "0.1.4a0"
 
 # ── CLI path resolution ────────────────────────────────────────────────────────
 # The Python CLI repo must be on sys.path for `from bosch_camera import ...` to

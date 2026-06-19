@@ -100,6 +100,9 @@ _PLAYER_JS = (
     this._onPause = null;
     this._hlsKeepalive = null;
     this._stallChecker = null;
+    this._trackMuteTimer = null;
+    this._rvfcHandle = null;
+    this._recovering = false;
   }
 
   Go2rtcStream.prototype.start = function (videoEl, o) {
@@ -166,10 +169,34 @@ _PLAYER_JS = (
       pc.ontrack = function (evt) {
         if (self._stopping) { return; }
         remoteStream.addTrack(evt.track);
-        if (videoEl.srcObject !== remoteStream) { videoEl.srcObject = remoteStream; }
+        if (videoEl.srcObject !== remoteStream) { videoEl.srcObject = remoteStream; self._startRvfc(videoEl); }
+        // PiP-freeze fix (parity HA v13.7.4): when go2rtc stops delivering media
+        // (background-tab WebSocket i/o timeout) Chrome fires `mute` on the remote
+        // track — an EVENT, so it arrives even while the tab is hidden and the
+        // stall-checker setInterval is throttled. Debounce 6s then recover.
+        if (evt.track.kind === "video") {
+          evt.track.onunmute = function () {
+            if (self._trackMuteTimer) { clearTimeout(self._trackMuteTimer); self._trackMuteTimer = null; }
+          };
+          evt.track.onmute = function () {
+            if (self._stopping || !self._live) { return; }
+            if (self._trackMuteTimer) { clearTimeout(self._trackMuteTimer); }
+            self._trackMuteTimer = setTimeout(function () {
+              self._trackMuteTimer = null;
+              if (evt.track.muted && self._live && !self._stopping) { self._recover("webrtc video track muted >6s"); }
+            }, 6000);
+          };
+        }
       };
       pc.oniceconnectionstatechange = function () {
         if (pc.iceConnectionState === "failed") { settle(reject, new Error("ICE failed")); }
+      };
+      // Live-phase transport-failure recovery (parity HA v13.7.4): the listener
+      // above only settles the INITIAL connect; once live a `failed` aggregate
+      // connection state means the transport died — recover PiP-safely.
+      pc.onconnectionstatechange = function () {
+        if (self._pc !== pc || !self._live || self._stopping) { return; }
+        if (pc.connectionState === "failed") { self._recover('webrtc connectionState "failed"'); }
       };
       (async function () {
         try {
@@ -277,6 +304,8 @@ _PLAYER_JS = (
 
   Go2rtcStream.prototype._detachVideoListeners = function () {
     this._stopStallChecker();
+    this._stopRvfc(this._videoEl);
+    if (this._trackMuteTimer) { clearTimeout(this._trackMuteTimer); this._trackMuteTimer = null; }
     if (this._videoEl) {
       if (this._onPlaying) { this._videoEl.removeEventListener("playing", this._onPlaying); }
       if (this._onPause) { this._videoEl.removeEventListener("pause", this._onPause); }
@@ -286,14 +315,85 @@ _PLAYER_JS = (
   Go2rtcStream.prototype._startStallChecker = function (videoEl) {
     this._stopStallChecker();
     var self = this;
+    var lastTime = 0;
+    var stallCount = 0;
     this._stallChecker = setInterval(function () {
       if (self._stopping || !self._live || !videoEl) { self._stopStallChecker(); return; }
-      if (videoEl.paused) { videoEl.play().catch(function () {}); }
+      // Presented-frame freeze (rVFC, parity HA v13.7.4): _boschLastFrameAt keeps
+      // updating for a PiP window in a hidden tab and STOPS the instant frames
+      // freeze — an un-throttled signal the throttled currentTime poll can't give.
+      var frameFrozen =
+        videoEl._boschLastFrameAt != null && (performance.now() - videoEl._boschLastFrameAt) > 10000;
+      var frozen = videoEl.currentTime === lastTime;
+      var pausedWhileLive = videoEl.paused;
+      if (frozen || pausedWhileLive || frameFrozen) {
+        if (videoEl.paused) { videoEl.play().catch(function () {}); }
+        stallCount++;
+        if (stallCount >= 3 || frameFrozen) {
+          stallCount = 0;
+          self._recover(frameFrozen ? "no presented frame >10s" : "stall checker ~15s");
+        }
+      } else {
+        stallCount = 0;
+      }
+      lastTime = videoEl.currentTime;
     }, 5000);
   };
 
   Go2rtcStream.prototype._stopStallChecker = function () {
     if (this._stallChecker) { clearInterval(this._stallChecker); this._stallChecker = null; }
+  };
+
+  // rVFC liveness heartbeat: stamp _boschLastFrameAt on every PRESENTED frame.
+  // Re-arms while live; cancelled in _detachVideoListeners. The stall checker
+  // reads it to catch a freeze even in a hidden-tab PiP. (Parity HA v13.7.4.)
+  Go2rtcStream.prototype._startRvfc = function (videoEl) {
+    if (typeof videoEl.requestVideoFrameCallback !== "function") { return; }
+    this._stopRvfc(videoEl);
+    var self = this;
+    videoEl._boschLastFrameAt = performance.now();
+    var onFrame = function () {
+      videoEl._boschLastFrameAt = performance.now();
+      if (self._live && !self._stopping && videoEl.srcObject) {
+        self._rvfcHandle = videoEl.requestVideoFrameCallback(onFrame);
+      } else {
+        self._rvfcHandle = null;
+      }
+    };
+    this._rvfcHandle = videoEl.requestVideoFrameCallback(onFrame);
+  };
+
+  Go2rtcStream.prototype._stopRvfc = function (videoEl) {
+    var el = videoEl || this._videoEl;
+    if (this._rvfcHandle != null && el && typeof el.cancelVideoFrameCallback === "function") {
+      try { el.cancelVideoFrameCallback(this._rvfcHandle); } catch (e) {}
+    }
+    this._rvfcHandle = null;
+    if (el) { el._boschLastFrameAt = null; }
+  };
+
+  // Idempotent, PiP-safe live-stream recovery. Called by the stall checker AND by
+  // the WebRTC track-`mute` / connection-`failed` handlers (events, not throttled
+  // timers — they fire while the tab is hidden). Tears the dead transport down but
+  // keeps the SAME <video> (so any PiP window survives) and re-starts on it after a
+  // short delay — the fresh srcObject flows back into the floating window with no
+  // user gesture. Guarded by _recovering. (Parity HA v13.7.4.)
+  Go2rtcStream.prototype._recover = function (reason) {
+    if (this._stopping || this._recovering || !this._live || !this._videoEl) { return; }
+    console.warn("[bosch-live] live recovery (" + reason + ")");
+    this._recovering = true;
+    var self = this;
+    var videoEl = this._videoEl;
+    var wantAudio = !videoEl.muted;
+    this._detachVideoListeners();
+    this._cleanupWebRTC();
+    this._cleanupHLS();
+    this._live = false;
+    setTimeout(function () {
+      self._recovering = false;
+      if (self._stopping || !self._videoEl) { return; }
+      Promise.resolve(self.start(videoEl, { wantAudio: wantAudio, armed: false })).catch(function () {});
+    }, 2000);
   };
 
   Go2rtcStream.prototype._handlePause = function () {
