@@ -103,6 +103,7 @@ _PLAYER_JS = (
     this._trackMuteTimer = null;
     this._rvfcHandle = null;
     this._recovering = false;
+    this._stallWorker = null;
   }
 
   Go2rtcStream.prototype.start = function (videoEl, o) {
@@ -314,6 +315,7 @@ _PLAYER_JS = (
 
   Go2rtcStream.prototype._startStallChecker = function (videoEl) {
     this._stopStallChecker();
+    this._startLiveStallWorker();
     var self = this;
     var lastTime = 0;
     var stallCount = 0;
@@ -342,6 +344,44 @@ _PLAYER_JS = (
 
   Go2rtcStream.prototype._stopStallChecker = function () {
     if (this._stallChecker) { clearInterval(this._stallChecker); this._stallChecker = null; }
+    this._stopLiveStallWorker();
+  };
+
+  Go2rtcStream.prototype._startLiveStallWorker = function () {
+    this._stopLiveStallWorker();
+    if (typeof Worker !== "function") { return; }
+    try {
+      var src = "let t=setInterval(function(){postMessage(0);},5000);"
+        + "onmessage=function(e){if(e.data==='stop'){clearInterval(t);close();}};";
+      var blob = new Blob([src], { type: "application/javascript" });
+      var url = URL.createObjectURL(blob);
+      var self = this;
+      this._stallWorker = new Worker(url);
+      URL.revokeObjectURL(url);
+      this._stallWorker.onmessage = function () { self._liveStallTickFromWorker(); };
+      this._stallWorker.onerror = function () { self._stopLiveStallWorker(); };
+    } catch (e) { this._stallWorker = null; }
+  };
+
+  Go2rtcStream.prototype._stopLiveStallWorker = function () {
+    if (this._stallWorker) {
+      try { this._stallWorker.postMessage("stop"); } catch (e) {}
+      try { this._stallWorker.terminate(); } catch (e) {}
+      this._stallWorker = null;
+    }
+  };
+
+  Go2rtcStream.prototype._liveStallTickFromWorker = function () {
+    if (document.visibilityState !== "hidden") { return; }
+    if (!this._live || this._recovering || this._stopping) { return; }
+    var videoEl = this._videoEl;
+    if (!videoEl) { return; }
+    var ownsPip = document.pictureInPictureElement === videoEl;
+    if (!ownsPip) { return; }
+    var isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
+    var frameFrozen = videoEl._boschLastFrameAt != null
+      && (performance.now() - videoEl._boschLastFrameAt) > 10000;
+    if (frameFrozen && !isIOS) { this._recover("no presented frame >10s (bg worker)"); }
   };
 
   // rVFC liveness heartbeat: stamp _boschLastFrameAt on every PRESENTED frame.
@@ -351,7 +391,6 @@ _PLAYER_JS = (
     if (typeof videoEl.requestVideoFrameCallback !== "function") { return; }
     this._stopRvfc(videoEl);
     var self = this;
-    videoEl._boschLastFrameAt = performance.now();
     var onFrame = function () {
       videoEl._boschLastFrameAt = performance.now();
       if (self._live && !self._stopping && videoEl.srcObject) {

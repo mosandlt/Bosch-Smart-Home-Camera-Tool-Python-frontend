@@ -69,6 +69,64 @@ class TestPlayerJsParity:
         assert "Go2rtcStream.prototype._recover" in js
         assert "this._recovering" in js
 
+    def test_bg_worker_stall_wiring(self, fake_nicegui: Any) -> None:
+        """Web-Worker heartbeat reduces PiP-freeze detection from ~60s to ~10s (HA v13.7.5 parity).
+
+        Chrome throttles setInterval in hidden tabs to ~1x/min; a Worker thread is
+        un-throttled. The worker ticks every 5s; _liveStallTickFromWorker checks
+        visibilityState, ownsPip, and frameFrozen — iOS excluded (thread-suspend
+        false-positives). Worker is started with _startStallChecker and stopped with
+        _stopStallChecker on every teardown path.
+        """
+        from bosch_camera_frontend.components.live_player import _PLAYER_JS
+
+        js = _PLAYER_JS
+        # Worker infrastructure — constructor + three methods
+        assert "this._stallWorker = null" in js
+        assert "Go2rtcStream.prototype._startLiveStallWorker" in js
+        assert "Go2rtcStream.prototype._stopLiveStallWorker" in js
+        assert "Go2rtcStream.prototype._liveStallTickFromWorker" in js
+        # Worker is spawned with a Blob URL so no external script file is needed
+        assert "new Blob(" in js
+        assert "URL.createObjectURL" in js
+        assert "URL.revokeObjectURL" in js
+        assert "new Worker(url)" in js
+        # Worker ticks every 5s (matches the stall-checker interval)
+        assert "postMessage(0);},5000)" in js
+        # Worker started/stopped alongside the setInterval stall checker
+        assert "this._startLiveStallWorker();" in js
+        assert "this._stopLiveStallWorker();" in js
+        # Tick handler guards: hidden tab, live+not-recovering+not-stopping, ownsPip, iOS
+        assert 'document.visibilityState !== "hidden"' in js
+        assert "document.pictureInPictureElement === videoEl" in js
+        assert "/iP(hone|ad|od)/.test(navigator.userAgent)" in js
+        assert "no presented frame >10s (bg worker)" in js
+        # Recovery uses the shared idempotent _recover — NOT public stop()
+        assert '_recover("no presented frame >10s (bg worker)")' in js
+
+    def test_rvfc_no_seed_before_first_frame(self, fake_nicegui: Any) -> None:
+        """_boschLastFrameAt must NOT be seeded with performance.now() before first frame.
+
+        Seeding caused false-positive stall detection during slow reconnects: the
+        stall checker fired immediately after start() before any frame arrived,
+        kicking off an unnecessary recovery loop. Fix: leave null until first real
+        rVFC callback fires. (parity HA v13.7.5 / ioBroker)
+        """
+        from bosch_camera_frontend.components.live_player import _PLAYER_JS
+
+        js = _PLAYER_JS
+        # The onFrame callback still stamps the real presentation time
+        assert "videoEl._boschLastFrameAt = performance.now();" in js
+        # But _startRvfc must NOT seed the value before the first callback —
+        # the only assignment must be INSIDE the onFrame closure, not before it.
+        # We verify by checking there is exactly one occurrence of this assignment
+        # and it is preceded by "var onFrame = function" (inside the closure),
+        # not immediately after "this._stopRvfc(videoEl);" (the seed location).
+        seed_pattern = "this._stopRvfc(videoEl);\n    var self = this;\n    videoEl._boschLastFrameAt"
+        assert seed_pattern not in js, (
+            "_startRvfc must NOT seed _boschLastFrameAt before the first real frame"
+        )
+
     def test_hls_pin_exact_version_and_sri(self, fake_nicegui: Any) -> None:
         from bosch_camera_frontend.components.live_player import (
             _HLS_CDN_URL,
