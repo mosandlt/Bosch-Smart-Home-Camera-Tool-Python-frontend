@@ -47,6 +47,10 @@ _PLAYER_JS = (
   var HLS_SRI = "%HLS_SRI%";
   var _hlsLoadPromise = null;
   var _sharedAudioCtx = null;
+  // Bounded fatal hls.js error recovery (parity HA v14.4.0 P1): NETWORK_ERROR
+  // and MEDIA_ERROR each get this many in-place hls.js retries before we give
+  // up on patching the same session and do a full teardown+reconnect instead.
+  var HLS_FATAL_RETRY_MAX = 3;
 
   function isRemoteSession() {
     var host = window.location.hostname;
@@ -104,6 +108,15 @@ _PLAYER_JS = (
     this._rvfcHandle = null;
     this._recovering = false;
     this._stallWorker = null;
+    // Sticky-HLS (parity HA v13.7.9): once a dead WebRTC track is detected
+    // (track "live" but no frames ever decode — CGNAT/5G), we fall back to
+    // HLS and latch this flag for the rest of the session so subsequent
+    // recoveries never retry WebRTC again, breaking the endless
+    // VERBINDE<->LIVE flip loop. Cleared only by creating a new Go2rtcStream
+    // (page reload / camera-detail re-open).
+    this._stickyHls = false;
+    this._hlsNetworkErrorCount = 0;
+    this._hlsMediaErrorCount = 0;
   }
 
   Go2rtcStream.prototype.start = function (videoEl, o) {
@@ -116,8 +129,19 @@ _PLAYER_JS = (
       armed || !!(wantAudio && _sharedAudioCtx && _sharedAudioCtx.state === "running");
     videoEl.muted = !(wantAudio && effectivelyArmed);
     this._onPhase("connecting", null);
-    var webrtcTimeout = isRemoteSession() ? 2500 : 5000;
     var self = this;
+    // Sticky-HLS (parity HA v13.7.9): a prior dead-track detection this
+    // session means WebRTC is known-bad on this network path — skip straight
+    // to HLS instead of re-running the same flip that caused the freeze.
+    if (this._stickyHls) {
+      console.warn("[bosch-live] sticky HLS active this session, skipping WebRTC");
+      return this._startHLS(videoEl, wantAudio, effectivelyArmed).catch(function (hlsErr) {
+        if (self._stopping) { return; }
+        self._onPhase("error", null);
+        self._onError(hlsErr);
+      });
+    }
+    var webrtcTimeout = isRemoteSession() ? 2500 : 5000;
     return this._startWebRTC(videoEl, wantAudio, effectivelyArmed, webrtcTimeout)
       .catch(function (webrtcErr) {
         if (self._stopping) { return; }
@@ -184,7 +208,8 @@ _PLAYER_JS = (
             if (self._trackMuteTimer) { clearTimeout(self._trackMuteTimer); }
             self._trackMuteTimer = setTimeout(function () {
               self._trackMuteTimer = null;
-              if (evt.track.muted && self._live && !self._stopping) { self._recover("webrtc video track muted >6s"); }
+              // deadTrack=true: the track itself went dark — sticky-HLS trigger.
+              if (evt.track.muted && self._live && !self._stopping) { self._recover("webrtc video track muted >6s", true); }
             }, 6000);
           };
         }
@@ -240,6 +265,10 @@ _PLAYER_JS = (
 
   Go2rtcStream.prototype._startHLS = async function (videoEl, wantAudio, armed) {
     this._transport = "hls";
+    // Fresh retry budget for every new HLS session (initial start AND every
+    // reconnect via _recover() re-enters here through start()).
+    this._hlsNetworkErrorCount = 0;
+    this._hlsMediaErrorCount = 0;
     var hlsUrl = this._baseUrl + "/api/stream.m3u8?src=" + encodeURIComponent(this._src);
     var HlsClass = null;
     try { HlsClass = await loadHlsJs(); } catch (e) {}
@@ -250,9 +279,38 @@ _PLAYER_JS = (
         maxBufferLength: 14, maxMaxBufferLength: 22,
       });
       this._hls = hls;
+      // Bounded fatal-error recovery (parity HA v14.4.0 P1): NETWORK_ERROR and
+      // MEDIA_ERROR each get up to HLS_FATAL_RETRY_MAX in-place hls.js retries
+      // (startLoad() / recoverMediaError()) before we give up patching this
+      // hls.js instance and do a full teardown+reconnect via _recover() —
+      // previously MEDIA_ERROR had no cap at all (nor any retry), so a single
+      // fatal error left the stream dead with only a console warning.
       hls.on(HlsClass.Events.ERROR, function (_evt, data) {
         if (self._stopping) { return; }
-        if (data.fatal) { self._onError(new Error("hls.js fatal: " + data.type + "/" + data.details)); }
+        if (!data.fatal) { return; }
+        if (data.type === HlsClass.ErrorTypes.NETWORK_ERROR) {
+          self._hlsNetworkErrorCount++;
+          if (self._hlsNetworkErrorCount <= HLS_FATAL_RETRY_MAX) {
+            console.warn(
+              "[bosch-live] hls.js fatal NETWORK_ERROR, retry " +
+              self._hlsNetworkErrorCount + "/" + HLS_FATAL_RETRY_MAX
+            );
+            try { hls.startLoad(); } catch (e) {}
+            return;
+          }
+        } else if (data.type === HlsClass.ErrorTypes.MEDIA_ERROR) {
+          self._hlsMediaErrorCount++;
+          if (self._hlsMediaErrorCount <= HLS_FATAL_RETRY_MAX) {
+            console.warn(
+              "[bosch-live] hls.js fatal MEDIA_ERROR, retry " +
+              self._hlsMediaErrorCount + "/" + HLS_FATAL_RETRY_MAX
+            );
+            try { hls.recoverMediaError(); } catch (e) {}
+            return;
+          }
+        }
+        self._onError(new Error("hls.js fatal: " + data.type + "/" + data.details));
+        self._recover("hls fatal " + data.type + " (retry cap reached)");
       });
       hls.loadSource(hlsUrl);
       hls.attachMedia(videoEl);
@@ -333,7 +391,10 @@ _PLAYER_JS = (
         stallCount++;
         if (stallCount >= 3 || frameFrozen) {
           stallCount = 0;
-          self._recover(frameFrozen ? "no presented frame >10s" : "stall checker ~15s");
+          // frameFrozen (rVFC-based, WebRTC-only signal) = dead track → sticky-HLS.
+          // A plain currentTime/paused stall can happen on either transport and
+          // is not itself proof WebRTC is unusable, so it stays non-sticky.
+          self._recover(frameFrozen ? "no presented frame >10s" : "stall checker ~15s", frameFrozen);
         }
       } else {
         stallCount = 0;
@@ -381,7 +442,7 @@ _PLAYER_JS = (
     var isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
     var frameFrozen = videoEl._boschLastFrameAt != null
       && (performance.now() - videoEl._boschLastFrameAt) > 10000;
-    if (frameFrozen && !isIOS) { this._recover("no presented frame >10s (bg worker)"); }
+    if (frameFrozen && !isIOS) { this._recover("no presented frame >10s (bg worker)", true); }
   };
 
   // rVFC liveness heartbeat: stamp _boschLastFrameAt on every PRESENTED frame.
@@ -417,9 +478,17 @@ _PLAYER_JS = (
   // keeps the SAME <video> (so any PiP window survives) and re-starts on it after a
   // short delay — the fresh srcObject flows back into the floating window with no
   // user gesture. Guarded by _recovering. (Parity HA v13.7.4.)
-  Go2rtcStream.prototype._recover = function (reason) {
+  Go2rtcStream.prototype._recover = function (reason, deadTrack) {
     if (this._stopping || this._recovering || !this._live || !this._videoEl) { return; }
     console.warn("[bosch-live] live recovery (" + reason + ")");
+    // Sticky-HLS (parity HA v13.7.9): a confirmed dead WebRTC track (frames
+    // never decode, or the track itself muted for good) means retrying
+    // WebRTC again would just re-enter the same freeze — latch HLS for the
+    // rest of this session instead of flip-flopping forever.
+    if (deadTrack && !this._stickyHls) {
+      this._stickyHls = true;
+      console.warn("[bosch-live] dead WebRTC track detected, sticking to HLS for this session");
+    }
     this._recovering = true;
     var self = this;
     var videoEl = this._videoEl;

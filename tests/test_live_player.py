@@ -101,8 +101,10 @@ class TestPlayerJsParity:
         assert "document.pictureInPictureElement === videoEl" in js
         assert "/iP(hone|ad|od)/.test(navigator.userAgent)" in js
         assert "no presented frame >10s (bg worker)" in js
-        # Recovery uses the shared idempotent _recover — NOT public stop()
-        assert '_recover("no presented frame >10s (bg worker)")' in js
+        # Recovery uses the shared idempotent _recover — NOT public stop() — and
+        # arms the sticky-HLS dead-track flag (parity HA v13.7.9, see
+        # TestStickyHlsFallback below).
+        assert '_recover("no presented frame >10s (bg worker)", true)' in js
 
     def test_rvfc_no_seed_before_first_frame(self, fake_nicegui: Any) -> None:
         """_boschLastFrameAt must NOT be seeded with performance.now() before first frame.
@@ -150,6 +152,137 @@ class TestPlayerJsParity:
         assert 'audioBtn.style.display = live ? "" : "none";' in _PLAYER_JS
         # PiP only when the browser supports it
         assert "document.pictureInPictureEnabled" in _PLAYER_JS
+
+
+class TestStickyHlsFallback:
+    """Sticky-HLS after a dead WebRTC track (parity HA v13.7.9).
+
+    HA symptom this ports: a WebRTC track can arrive (badge "Live") but never
+    actually decode frames over CGNAT/5G — every recovery re-tried WebRTC,
+    producing an endless VERBINDE<->LIVE flip and never settling on HLS. Fix:
+    once a dead track is confirmed (rVFC freeze / bg-worker freeze / the
+    track's own `mute` staying set >6s), latch a `_stickyHls` flag for the
+    rest of the session so `start()` skips WebRTC and goes straight to HLS on
+    every subsequent (re)connect, until the page/detail view is re-opened
+    (a fresh Go2rtcStream instance).
+    """
+
+    def test_sticky_flag_initialised_false(self, fake_nicegui: Any) -> None:
+        from bosch_camera_frontend.components.live_player import _PLAYER_JS
+
+        assert "this._stickyHls = false;" in _PLAYER_JS
+
+    def test_start_checks_sticky_before_attempting_webrtc(
+        self, fake_nicegui: Any
+    ) -> None:
+        from bosch_camera_frontend.components.live_player import _PLAYER_JS
+
+        js = _PLAYER_JS
+        start_idx = js.index("Go2rtcStream.prototype.start = function")
+        next_method_idx = js.index("Go2rtcStream.prototype.stop = function")
+        start_body = js[start_idx:next_method_idx]
+        sticky_check_idx = start_body.index("if (this._stickyHls)")
+        webrtc_attempt_idx = start_body.index("this._startWebRTC(videoEl")
+        # the sticky check must gate/precede the WebRTC attempt, not follow it
+        assert sticky_check_idx < webrtc_attempt_idx
+        # when sticky, start() goes straight to _startHLS and returns without
+        # ever calling _startWebRTC
+        sticky_block = start_body[sticky_check_idx:webrtc_attempt_idx]
+        assert "this._startHLS(videoEl" in sticky_block
+        assert "return" in sticky_block
+
+    def test_recover_arms_sticky_on_dead_track(self, fake_nicegui: Any) -> None:
+        from bosch_camera_frontend.components.live_player import _PLAYER_JS
+
+        js = _PLAYER_JS
+        assert "Go2rtcStream.prototype._recover = function (reason, deadTrack)" in js
+        assert "if (deadTrack && !this._stickyHls) {" in js
+        assert "this._stickyHls = true;" in js
+
+    def test_dead_track_signals_pass_sticky_true(self, fake_nicegui: Any) -> None:
+        """The three dead-track detections (rVFC stall-checker, bg-worker tick,
+        and track-mute >6s) must call `_recover` with `deadTrack=true`."""
+        from bosch_camera_frontend.components.live_player import _PLAYER_JS
+
+        js = _PLAYER_JS
+        assert (
+            '_recover(frameFrozen ? "no presented frame >10s" : "stall checker ~15s", frameFrozen)'
+            in js
+        )
+        assert '_recover("no presented frame >10s (bg worker)", true)' in js
+        assert '_recover("webrtc video track muted >6s", true)' in js
+
+    def test_generic_connection_failure_is_not_a_sticky_trigger(
+        self, fake_nicegui: Any
+    ) -> None:
+        """A single ICE/connectionState failure alone must NOT latch sticky-HLS —
+        only a confirmed dead track should (see test_dead_track_signals_pass_sticky_true)."""
+        from bosch_camera_frontend.components.live_player import _PLAYER_JS
+
+        js = _PLAYER_JS
+        assert """self._recover('webrtc connectionState "failed"');""" in js
+
+
+class TestHlsFatalErrorRetryCap:
+    """Bounded fatal hls.js error recovery (parity HA v14.4.0 P1).
+
+    HA symptom this ports: fatal MEDIA_ERROR recovery was unbounded (unlike
+    NETWORK_ERROR, which was already capped at 3 retries) — a stuck decoder
+    could retry forever instead of ever doing a full reconnect. This repo had
+    NEITHER cap NOR any retry at all (a fatal error just logged a warning and
+    left the stream dead) — fix adds bounded in-place retries for both fatal
+    types, then a full teardown+reconnect via `_recover()` once exhausted.
+    """
+
+    def test_retry_cap_constant_is_three(self, fake_nicegui: Any) -> None:
+        from bosch_camera_frontend.components.live_player import _PLAYER_JS
+
+        assert "var HLS_FATAL_RETRY_MAX = 3;" in _PLAYER_JS
+
+    def test_both_fatal_types_capped_at_same_limit(self, fake_nicegui: Any) -> None:
+        from bosch_camera_frontend.components.live_player import _PLAYER_JS
+
+        js = _PLAYER_JS
+        assert "HlsClass.ErrorTypes.NETWORK_ERROR" in js
+        assert "HlsClass.ErrorTypes.MEDIA_ERROR" in js
+        # both counters gated against the SAME cap — MEDIA_ERROR is no longer
+        # the unbounded one
+        assert js.count("<= HLS_FATAL_RETRY_MAX") == 2
+        assert "self._hlsNetworkErrorCount++;" in js
+        assert "self._hlsMediaErrorCount++;" in js
+
+    def test_in_place_retry_calls(self, fake_nicegui: Any) -> None:
+        from bosch_camera_frontend.components.live_player import _PLAYER_JS
+
+        js = _PLAYER_JS
+        # NETWORK_ERROR retries via startLoad(), MEDIA_ERROR via recoverMediaError()
+        assert "try { hls.startLoad(); } catch (e) {}" in js
+        assert "try { hls.recoverMediaError(); } catch (e) {}" in js
+
+    def test_counters_reset_on_every_new_hls_session(self, fake_nicegui: Any) -> None:
+        from bosch_camera_frontend.components.live_player import _PLAYER_JS
+
+        js = _PLAYER_JS
+        start_hls_idx = js.index("Go2rtcStream.prototype._startHLS = async function")
+        error_handler_idx = js.index("hls.on(HlsClass.Events.ERROR", start_hls_idx)
+        reset_block = js[start_hls_idx:error_handler_idx]
+        assert "this._hlsNetworkErrorCount = 0;" in reset_block
+        assert "this._hlsMediaErrorCount = 0;" in reset_block
+
+    def test_cap_exhausted_triggers_full_reconnect_not_silent_dropout(
+        self, fake_nicegui: Any
+    ) -> None:
+        """Once retries are exhausted (or for any other fatal error type), the
+        fatal error must both surface via onError AND trigger a full
+        teardown+reconnect via _recover() — previously it only logged."""
+        from bosch_camera_frontend.components.live_player import _PLAYER_JS
+
+        js = _PLAYER_JS
+        assert (
+            'self._onError(new Error("hls.js fatal: " + data.type + "/" + data.details));'
+            in js
+        )
+        assert 'self._recover("hls fatal " + data.type + " (retry cap reached)");' in js
 
 
 class TestLivePlayerMount:
