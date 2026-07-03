@@ -283,7 +283,7 @@ Mapped from iOS app v2.11.2. Phase 1 shipped in v0.1.1-alpha; the live-video cor
 ### Phase 4 — Advanced Features
 
 - [ ] Intercom (listen-only audio player)
-- [ ] Siren trigger button (CAMERA_360)
+- [ ] Siren trigger button (Gen2 Indoor II only)
 - [ ] RCP protocol reads (camera info, clock, dimmer)
 - [ ] WiFi signal strength display
 - [ ] Ambient light sensor value
