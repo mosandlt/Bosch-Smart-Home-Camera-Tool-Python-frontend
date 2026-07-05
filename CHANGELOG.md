@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.5a0 — Web-Worker heartbeat for PiP-freeze detection
+## 0.1.5-alpha — Web-Worker heartbeat for PiP-freeze detection
 
 - Web-Worker heartbeat: detects Picture-in-Picture freeze after tab backgrounding and auto-recovers; parity with HA v13.7.5
 
