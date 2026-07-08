@@ -21,7 +21,7 @@ from collections.abc import Awaitable, Callable
 
 from nicegui import ui
 
-# One global client-side visibility bridge (re-used by every player instance):
+# One global client-side visibility bridge (reused by every player instance):
 # emits a NiceGUI event whenever the tab's visibility flips.
 _VISIBILITY_BRIDGE_JS = (
     "<script>if(!window.__boschVisWired){window.__boschVisWired=1;"
