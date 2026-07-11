@@ -260,10 +260,13 @@ Mapped from iOS app v2.11.2. Phase 1 shipped in v0.1.1-alpha; the live-video cor
 - [x] WebRTC/HLS player wired (`LivePlayer`, ported from the ioBroker engine) with audio, Picture-in-Picture, fullscreen
 - [x] Snapshot-tier near-live fallback when go2rtc is absent (`LiveSnapshotPlayer`)
 - [x] Session/credential refresh vs Gen2 rotation (`StreamSession`)
+- [x] Light toggle wired to live API (`cli_bridge.async_get/set_light_override`, `PUT /v11/video_inputs/{id}/lighting_override`)
+- [x] Motion detection enable + sensitivity select wired to live API (`async_get/set_motion_detection`, `PUT .../motion`)
+- [x] Intrusion detection enable + mode/sensitivity/distance wired to live API (`async_get/set_intrusion_detection`, `PUT .../intrusionDetectionConfig`)
+- [x] Unread event badge on each camera card (`async_get_unread_count`, `GET /v11/video_inputs/{id}` → `numberOfUnreadEvents`)
 - [ ] Pan control slider (CAMERA_360) wired to Bosch `cmd_pan` (currently a stub)
-- [ ] Light toggle + notifications toggle wired to live API (currently stubs)
+- [ ] Notifications toggle wired to live API (currently a stub)
 - [ ] Auto-follow toggle
-- [ ] Motion sensitivity select
 - [ ] Audio alarm threshold slider
 - [ ] Recording sound toggle
 - [ ] Video quality select (auto/high/low)
@@ -278,7 +281,6 @@ Mapped from iOS app v2.11.2. Phase 1 shipped in v0.1.1-alpha; the live-video cor
 - [ ] Clip re-request button (POST /clip_request)
 - [ ] Mark as read / favorite
 - [ ] Event type filter (MOVEMENT, PERSON, AUDIO_ALARM, etc.)
-- [ ] Unread event badge
 
 ### Phase 4 — Advanced Features
 
@@ -290,6 +292,12 @@ Mapped from iOS app v2.11.2. Phase 1 shipped in v0.1.1-alpha; the live-video cor
 - [ ] Camera sharing management (friends)
 - [ ] Automation rules editor
 - [ ] Multi-camera grid view
+- [ ] Glass-break / fire-alarm sound detection toggle
+- [ ] Zones / privacy-masks editor (read+write UI)
+- [ ] Rules / friends / sharing UI
+- [ ] Lighting schedule (read + write)
+- [ ] NVR / recording status display
+- [ ] Diagnostics display (RCP/ONVIF/feature flags/maintenance)
 
 ### Phase 5 — Polish
 

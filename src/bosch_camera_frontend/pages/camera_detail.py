@@ -7,6 +7,10 @@ TODO Phase 2: async snapshot loop; FFmpeg/go2rtc HLS pipeline.
 TODO Phase 2: pan slider (CAMERA_360 / pan_limit > 0).
 TODO Phase 3: real-time event feed via FCM push WebSocket.
 TODO Phase 3: event detail view with clip download.
+
+Camera light, motion detection, and intrusion detection are wired to the
+live cloud API via cli_bridge (async_get/set_light_override,
+async_get/set_motion_detection, async_get/set_intrusion_detection).
 """
 
 from __future__ import annotations
@@ -260,15 +264,38 @@ async def camera_detail_page(name: str) -> None:
 
                 # Light toggle (outdoor cameras only)
                 if cam_info.get("has_light"):
-                    ui.label("Light:").classes("text-sm self-center")
-                    ui.switch(
-                        "Camera Light",
-                        on_change=lambda e: ui.notify(
-                            # TODO Phase 2: call cmd_light / cmd_light equivalent
-                            f"Light {'ON' if e.value else 'OFF'} — Phase 2",
-                            color="info",
-                        ),
+                    light_state_label = ui.label("Light: loading…").classes(
+                        "text-sm col-span-2"
                     )
+                    light_switch = ui.switch(
+                        "Camera Light",
+                        on_change=lambda e: _toggle_light(e),
+                    )
+
+                    async def _load_light() -> None:
+                        ovr = await cli_bridge.async_get_light_override(session, cam_id)
+                        if ovr is not None:
+                            is_on = bool(ovr.get("frontLightOn", False))
+                            light_switch.set_value(is_on)
+                            light_state_label.set_text(
+                                f"Light: {'ON 💡' if is_on else 'OFF 🌑'}"
+                            )
+                        else:
+                            light_state_label.set_text("Light: unavailable")
+
+                    async def _toggle_light(e: Any) -> None:
+                        ok, err = await cli_bridge.async_set_light_override(
+                            session, cam_id, front_on=e.value
+                        )
+                        if ok:
+                            mode = "ON 💡" if e.value else "OFF 🌑"
+                            light_state_label.set_text(f"Light: {mode}")
+                            ui.notify(f"Light {mode}", color="info")
+                        else:
+                            light_switch.set_value(not e.value)
+                            ui.notify(f"Light toggle failed: {err}", color="negative")
+
+                    ui.timer(0.2, _load_light, once=True)
 
                 # Notifications toggle
                 ui.label("Notifications:").classes("text-sm self-center")
@@ -298,6 +325,133 @@ async def camera_detail_page(name: str) -> None:
                             color="info",
                         ),
                     ).classes("col-span-2")
+
+        # ── Motion Detection section ───────────────────────────────────────
+        with ui.card().classes("w-full p-4"):
+            ui.label("Motion Detection").classes("font-semibold mb-2")
+
+            _MOTION_SENSITIVITIES = (
+                "OFF",
+                "LOW",
+                "MEDIUM_LOW",
+                "MEDIUM_HIGH",
+                "HIGH",
+                "SUPER_HIGH",
+            )
+            motion_state_label = ui.label("Loading…").classes("text-sm")
+            with ui.row().classes("items-center gap-3"):
+                motion_switch = ui.switch("Enabled")
+                motion_sensitivity = ui.select(
+                    list(_MOTION_SENSITIVITIES),
+                    value="MEDIUM_HIGH",
+                    label="Sensitivity",
+                ).classes("w-48")
+
+            async def _load_motion() -> None:
+                data = await cli_bridge.async_get_motion_detection(session, cam_id)
+                if data is not None:
+                    enabled = bool(data.get("enabled", False))
+                    sens = data.get("motionAlarmConfiguration", "MEDIUM_HIGH")
+                    motion_switch.set_value(enabled)
+                    if sens in _MOTION_SENSITIVITIES:
+                        motion_sensitivity.set_value(sens)
+                    motion_state_label.set_text(
+                        f"Motion: {'ENABLED ✅' if enabled else 'DISABLED ❌'}"
+                    )
+                else:
+                    motion_state_label.set_text("Motion: unavailable")
+
+            async def _apply_motion() -> None:
+                ok, err = await cli_bridge.async_set_motion_detection(
+                    session,
+                    cam_id,
+                    enabled=motion_switch.value,
+                    sensitivity=motion_sensitivity.value,
+                )
+                if ok:
+                    state = "ENABLED ✅" if motion_switch.value else "DISABLED ❌"
+                    motion_state_label.set_text(f"Motion: {state}")
+                    ui.notify("Motion settings updated", color="info")
+                else:
+                    # Re-sync from the server so the UI never claims a state
+                    # the write didn't actually achieve (matches the
+                    # revert-on-failure behavior of the privacy/light toggles).
+                    ui.notify(f"Motion update failed: {err}", color="negative")
+                    await _load_motion()
+
+            ui.timer(0.2, _load_motion, once=True)
+            ui.button("Apply", icon="check", on_click=_apply_motion).props(
+                "dense flat"
+            ).classes("mt-2")
+
+        # ── Intrusion Detection section ────────────────────────────────────
+        with ui.card().classes("w-full p-4"):
+            ui.label("Intrusion Detection").classes("font-semibold mb-2")
+
+            _INTRUSION_MODES = ("ALL_MOTIONS", "ZONES")
+            intrusion_state_label = ui.label("Loading…").classes("text-sm")
+            with ui.row().classes("items-center gap-3"):
+                intrusion_switch = ui.switch("Enabled")
+                intrusion_mode = ui.select(
+                    list(_INTRUSION_MODES),
+                    value="ALL_MOTIONS",
+                    label="Mode",
+                ).classes("w-40")
+                intrusion_sensitivity = ui.number(
+                    label="Sensitivity (0-7)", min=0, max=7, value=3, step=1
+                ).classes("w-32")
+                intrusion_distance = ui.number(
+                    label="Distance (1-8)", min=1, max=8, value=5, step=1
+                ).classes("w-32")
+
+            async def _load_intrusion() -> None:
+                data = await cli_bridge.async_get_intrusion_detection(session, cam_id)
+                if data is not None:
+                    enabled = bool(data.get("enabled", False))
+                    mode = data.get("detectionMode", "ALL_MOTIONS")
+                    intrusion_switch.set_value(enabled)
+                    if mode in _INTRUSION_MODES:
+                        intrusion_mode.set_value(mode)
+                    intrusion_sensitivity.set_value(data.get("sensitivity", 3))
+                    intrusion_distance.set_value(data.get("distance", 5))
+                    intrusion_state_label.set_text(
+                        f"Intrusion: {'ENABLED ✅' if enabled else 'DISABLED ❌'}"
+                    )
+                else:
+                    intrusion_state_label.set_text(
+                        "Intrusion: unavailable (not supported on this model?)"
+                    )
+
+            def _int_or(value: Any, default: int) -> int:
+                # `value or default` would silently rewrite a legitimate 0 to
+                # `default` (falsy-zero coercion) — only fall back on None.
+                return int(value) if value is not None else default
+
+            async def _apply_intrusion() -> None:
+                ok, err = await cli_bridge.async_set_intrusion_detection(
+                    session,
+                    cam_id,
+                    enabled=intrusion_switch.value,
+                    # Always send detectionMode — this endpoint is a full-object
+                    # PUT (like light/motion), so omitting it risks the server
+                    # silently resetting the zone/all-motions mode, mirroring
+                    # cmd_intrusion's always-send-4-fields behavior.
+                    detection_mode=intrusion_mode.value,
+                    sensitivity=_int_or(intrusion_sensitivity.value, 0),
+                    distance=_int_or(intrusion_distance.value, 1),
+                )
+                if ok:
+                    state = "ENABLED ✅" if intrusion_switch.value else "DISABLED ❌"
+                    intrusion_state_label.set_text(f"Intrusion: {state}")
+                    ui.notify("Intrusion settings updated", color="info")
+                else:
+                    ui.notify(f"Intrusion update failed: {err}", color="negative")
+                    await _load_intrusion()
+
+            ui.timer(0.2, _load_intrusion, once=True)
+            ui.button("Apply", icon="check", on_click=_apply_intrusion).props(
+                "dense flat"
+            ).classes("mt-2")
 
         # ── Recent Events table ────────────────────────────────────────────
         with ui.card().classes("w-full p-4"):

@@ -50,8 +50,12 @@ jobs:
           # Editable install pulls runtime + dev deps (nicegui, requests,
           # urllib3, defusedxml, pytest, pytest-asyncio, pytest-mock).
           pip install -e ".[dev]"
-          pip install pytest-cov "ruff==0.15.15" "mypy==2.1.0"
+          pip install pytest-cov "ruff==0.15.15" "mypy==2.1.0" pip-audit
 
+      # ruff/mypy settings (target-version, strict, files) now live in
+      # pyproject.toml's [tool.ruff]/[tool.mypy] sections, so these bare
+      # invocations resolve identically here and in a local dev shell — no
+      # more CLI-flags-only config that can silently diverge.
       - name: Ruff (lint)
         working-directory: Bosch-Smart-Home-Camera-Tool-Python-frontend
         run: ruff check src/ tests/
@@ -62,7 +66,7 @@ jobs:
 
       - name: Mypy (strict)
         working-directory: Bosch-Smart-Home-Camera-Tool-Python-frontend
-        run: mypy --strict src/bosch_camera_frontend
+        run: mypy
 
       - name: Pytest (with coverage)
         working-directory: Bosch-Smart-Home-Camera-Tool-Python-frontend
@@ -72,4 +76,11 @@ jobs:
           pytest -q \
             --cov=src/bosch_camera_frontend \
             --cov-report=term-missing \
-            --cov-report=xml
+            --cov-report=xml \
+            --cov-fail-under=98
+
+      - name: pip-audit (runtime deps)
+        working-directory: Bosch-Smart-Home-Camera-Tool-Python-frontend
+        run: |
+          python3 -c "import tomllib; print(chr(10).join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))" > /tmp/our_reqs.txt
+          pip-audit -r /tmp/our_reqs.txt

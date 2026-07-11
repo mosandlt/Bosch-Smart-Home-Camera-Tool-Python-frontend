@@ -1,0 +1,39 @@
+# gitleaks config — extends the built-in default ruleset (JWTs, API keys,
+# private keys, generic tokens) with narrow allowlists for this repo's known,
+# intentionally-present FAKE test-fixture values, so CI secret-scanning stays
+# green while still catching real, accidentally-committed credentials.
+#
+# Real PII (real camera MACs / LAN IPs / Bosch cloud-IDs / tokens) must never
+# be committed here — see the sibling repos' CLAUDE.md SECRETS_SCAN pattern
+# for the exact literal patterns checked by the local pre-push hook family-
+# wide; we deliberately do NOT duplicate those real-value patterns here.
+
+title = "bosch-camera-frontend gitleaks config"
+
+[extend]
+useDefault = true
+
+# Generated / local-only artifact directories — never hold committed secrets.
+[[allowlists]]
+paths = [
+  '''htmlcov/.*''',
+  '''\.nicegui/.*''',
+  '''dist/.*''',
+  '''\.coverage''',
+]
+
+# Known-FAKE fixture values used in tests (all-digit-repeating cloud-IDs,
+# documented fake MAC, dotted placeholder bearer tokens). Listed so a future
+# default-rule tightening can't turn deliberate test fixtures into red CI.
+# Real values never look like these.
+[[allowlists]]
+regexes = [
+  '''11111111-2222-3333-4444-555555555555''',
+  '''11111111-2222-3333-4444-5566778899aa''',
+  '''22222222-3333-4444-5555-666666666666''',
+  '''(?:aa:bb:cc:dd:ee:ff)''',
+  # Fake dotted "token" fixtures (header.payload.signature / abc.def.ghi /
+  # new.token.value) — not real JWTs, never base64-decodable, but harmless
+  # to allowlist explicitly against future generic-token rule tightening.
+  '''header\.payload\.signature''',
+]

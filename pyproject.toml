@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bosch-camera-frontend"
-version = "0.1.6a0"
+version = "0.2.0a0"
 description = "NiceGUI browser frontend for Bosch Smart Home cameras"
 readme = "README.md"
 license = {text = "MIT"}
@@ -49,3 +49,19 @@ filterwarnings = [
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+# Mirrors exactly what CI already invokes bare (`ruff check src/ tests/` +
+# `ruff format --check src/ tests/`) — pinned explicitly here so a local
+# `ruff check`/`ruff format --check` run with no flags can never silently
+# diverge from CI's resolved settings (e.g. if a future ruff release changes
+# its target-version inference from requires-python).
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+# Mirrors `mypy --strict src/bosch_camera_frontend` exactly — kept in sync so
+# a bare local `mypy` run resolves the same strict settings as CI.
+[tool.mypy]
+python_version = "3.10"
+files = ["src/bosch_camera_frontend"]
+strict = true

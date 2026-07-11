@@ -6,7 +6,9 @@ and a snapshot thumbnail that refreshes every 30 s.
 TODO Phase 2: convert snapshot refresh to async background task so it doesn't
 block the NiceGUI event loop.
 TODO Phase 2: add live-stream indicator (go2rtc heartbeat).
-TODO Phase 3: show unread event count badge.
+
+Unread event count badge is wired to the live cloud API via
+cli_bridge.async_get_unread_count.
 """
 
 from __future__ import annotations
@@ -103,6 +105,7 @@ class CameraCard(ui.card):
                         ui.label(self._cam_info.get("name", "Camera")).classes(
                             "text-base font-semibold text-gray-900"
                         )
+                        self._unread_badge = ui.badge("").classes("hidden")
                     self._status_badge = ui.label("…").classes(
                         "text-xs text-gray-400 tracking-wide uppercase"
                     )
@@ -147,10 +150,34 @@ class CameraCard(ui.card):
         ui.timer(0.1, self._initial_load, once=True)
         # Auto-refresh every 30 s
         ui.timer(_SNAP_REFRESH_INTERVAL, self._refresh_snapshot)
+        ui.timer(_SNAP_REFRESH_INTERVAL, self._refresh_unread_count)
 
     async def _initial_load(self) -> None:
         await self._update_status()
         await self._refresh_snapshot()
+        await self._refresh_unread_count()
+
+    async def _refresh_unread_count(self) -> None:
+        """Fetch unread event count and update the badge (hidden when 0).
+
+        ``count is None`` means the fetch failed (401/5xx — get_unread_count
+        returns None on any non-200, not just on a thrown exception) — the
+        badge is left as-is rather than hidden, so a transient auth/network
+        blip can't be mistaken for "no unread events" and hide a real one.
+        """
+        try:
+            session = cli_bridge.make_session(self._token)
+            cam_id = self._cam_info.get("id", "")
+            count = await cli_bridge.async_get_unread_count(session, cam_id)
+            if count is None:
+                return
+            if count:
+                self._unread_badge.set_text(str(count))
+                self._unread_badge.classes(remove="hidden")
+            else:
+                self._unread_badge.classes(add="hidden")
+        except Exception:
+            pass  # Keep last known badge state on transient errors
 
     async def _update_status(self) -> None:
         """Ping the camera and update the status badge."""

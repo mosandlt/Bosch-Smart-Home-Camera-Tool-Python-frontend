@@ -1156,6 +1156,139 @@ class TestCameraCardMissingFields:
 
 
 # ---------------------------------------------------------------------------
+# _refresh_unread_count — unread-event badge (feature-parity wiring)
+# ---------------------------------------------------------------------------
+
+
+class TestRefreshUnreadCount:
+    async def test_positive_count_shows_badge(
+        self,
+        fake_nicegui: Any,
+        fake_camera: dict[str, Any],
+        fake_cfg: dict[str, Any],
+    ) -> None:
+        from bosch_camera_frontend.components import camera_card
+
+        br = _make_bridge()
+
+        async def _unread(*a: Any, **kw: Any) -> int:
+            return 5
+
+        br.async_get_unread_count = _unread
+        camera_card.cli_bridge = br  # type: ignore[attr-defined]
+
+        card = camera_card.CameraCard(
+            cam_info=fake_camera, token=_FAKE_TOKEN, cfg=fake_cfg
+        )
+        await card._refresh_unread_count()
+        assert card._unread_badge.text == "5"
+
+    async def test_zero_count_hides_badge(
+        self,
+        fake_nicegui: Any,
+        fake_camera: dict[str, Any],
+        fake_cfg: dict[str, Any],
+    ) -> None:
+        from bosch_camera_frontend.components import camera_card
+
+        br = _make_bridge()
+
+        async def _unread(*a: Any, **kw: Any) -> int:
+            return 0
+
+        br.async_get_unread_count = _unread
+        camera_card.cli_bridge = br  # type: ignore[attr-defined]
+
+        card = camera_card.CameraCard(
+            cam_info=fake_camera, token=_FAKE_TOKEN, cfg=fake_cfg
+        )
+        await card._refresh_unread_count()
+        calls = [c for c in card._unread_badge.calls if c[0] == "classes"]
+        assert calls and calls[-1][2].get("add") == "hidden"
+
+    async def test_none_count_leaves_badge_untouched(
+        self,
+        fake_nicegui: Any,
+        fake_camera: dict[str, Any],
+        fake_cfg: dict[str, Any],
+    ) -> None:
+        """None means "fetch failed" (401/5xx), not "zero unread" — the badge
+        must be left as-is rather than hidden, so a transient auth/network
+        blip can't mask a real unread count (see bug-hunt finding, 2026-07)."""
+        from bosch_camera_frontend.components import camera_card
+
+        br = _make_bridge()
+
+        async def _unread(*a: Any, **kw: Any) -> None:
+            return None
+
+        br.async_get_unread_count = _unread
+        camera_card.cli_bridge = br  # type: ignore[attr-defined]
+
+        card = camera_card.CameraCard(
+            cam_info=fake_camera, token=_FAKE_TOKEN, cfg=fake_cfg
+        )
+        # Simulate a prior successful fetch that showed a real count.
+        card._unread_badge.set_text("3")
+        card._unread_badge.classes(remove="hidden")
+        calls_before = len(card._unread_badge.calls)
+
+        await card._refresh_unread_count()
+
+        # No new .classes()/.set_text() calls — the badge state from the
+        # prior successful fetch must survive an unrelated fetch failure.
+        assert len(card._unread_badge.calls) == calls_before
+        assert card._unread_badge.text == "3"
+
+    async def test_exception_is_swallowed(
+        self,
+        fake_nicegui: Any,
+        fake_camera: dict[str, Any],
+        fake_cfg: dict[str, Any],
+    ) -> None:
+        from bosch_camera_frontend.components import camera_card
+
+        br = _make_bridge()
+
+        async def _unread_raises(*a: Any, **kw: Any) -> int:
+            raise ConnectionError("boom")
+
+        br.async_get_unread_count = _unread_raises
+        camera_card.cli_bridge = br  # type: ignore[attr-defined]
+
+        card = camera_card.CameraCard(
+            cam_info=fake_camera, token=_FAKE_TOKEN, cfg=fake_cfg
+        )
+        await card._refresh_unread_count()  # must not raise
+
+    async def test_initial_load_calls_refresh_unread_count(
+        self,
+        fake_nicegui: Any,
+        fake_camera: dict[str, Any],
+        fake_cfg: dict[str, Any],
+    ) -> None:
+        from bosch_camera_frontend.components import camera_card
+
+        br = _make_bridge()
+
+        calls = 0
+
+        async def _unread(*a: Any, **kw: Any) -> int:
+            nonlocal calls
+            calls += 1
+            return 2
+
+        br.async_get_unread_count = _unread
+        camera_card.cli_bridge = br  # type: ignore[attr-defined]
+
+        card = camera_card.CameraCard(
+            cam_info=fake_camera, token=_FAKE_TOKEN, cfg=fake_cfg
+        )
+        await card._initial_load()
+        assert calls == 1
+
+
+# ---------------------------------------------------------------------------
 # LiveSnapshotPlayer (snapshot-tier near-live player) — 2026-06-15
 # ---------------------------------------------------------------------------
 

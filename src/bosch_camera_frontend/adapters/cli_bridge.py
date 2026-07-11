@@ -259,17 +259,7 @@ def set_privacy_mode(
     )
     if r.status_code == 204:
         return True, None
-    try:
-        err = r.json().get("error", "").removeprefix("sh:")
-    except Exception:
-        err = ""
-    if r.status_code == 444 or "camera.unavailable" in err:
-        return False, "Camera offline"
-    if r.status_code == 401:
-        return False, "Auth expired — refresh token"
-    if r.status_code == 403:
-        return False, "Permission denied"
-    return False, f"HTTP {r.status_code} {err or 'unknown error'}"
+    return False, _map_write_error(r)
 
 
 def get_privacy_mode(session: "requests.Session", cam_id: str) -> str | None:
@@ -291,6 +281,166 @@ def get_all_cameras_status(session: "requests.Session") -> list[dict[str, Any]]:
     if r.status_code != 200:
         return []
     return cast("list[dict[str, Any]]", r.json())
+
+
+def _map_write_error(r: "requests.Response") -> str:
+    """Shared HTTP-status -> human-readable error mapping for write endpoints."""
+    try:
+        err = r.json().get("error", "").removeprefix("sh:")
+    except Exception:
+        err = ""
+    if r.status_code == 444 or "camera.unavailable" in err:
+        return "Camera offline"
+    if r.status_code == 401:
+        return "Auth expired — refresh token"
+    if r.status_code == 403:
+        return "Permission denied"
+    if r.status_code == 442:
+        return "Not supported on this camera model"
+    return f"HTTP {r.status_code} {err or 'unknown error'}"
+
+
+def get_light_override(
+    session: "requests.Session", cam_id: str
+) -> dict[str, Any] | None:
+    """GET current light-override state (frontLightOn/wallwasherOn/frontLightIntensity).
+
+    Returns None on error/HTTP != 200. Mirrors ``cmd_light``'s GET.
+    """
+    bc = _bc()
+    r = session.get(
+        f"{bc.CLOUD_API}/v11/video_inputs/{cam_id}/lighting_override", timeout=10
+    )
+    if r.status_code != 200:
+        return None
+    return cast("dict[str, Any]", r.json())
+
+
+def set_light_override(
+    session: "requests.Session",
+    cam_id: str,
+    front_on: bool,
+    wall_on: bool | None = None,
+    intensity: float | None = None,
+) -> tuple[bool, str | None]:
+    """Set the camera light override. Returns (ok, error_reason).
+
+    Mirrors ``cmd_light``'s PUT body: {"frontLightOn", "wallwasherOn",
+    "frontLightIntensity"}. If wall_on/intensity are omitted, they follow
+    front_on (both-on / both-off), matching the CLI's ``on``/``off`` shorthand.
+    """
+    bc = _bc()
+    if wall_on is None:
+        wall_on = front_on
+    if intensity is None:
+        intensity = 1.0 if front_on else 0.0
+    payload = {
+        "frontLightOn": front_on,
+        "wallwasherOn": wall_on,
+        "frontLightIntensity": intensity,
+    }
+    r = session.put(
+        f"{bc.CLOUD_API}/v11/video_inputs/{cam_id}/lighting_override",
+        json=payload,
+        timeout=10,
+    )
+    if r.status_code in (200, 201, 204):
+        return True, None
+    return False, _map_write_error(r)
+
+
+def get_unread_count(session: "requests.Session", cam_id: str) -> int | None:
+    """GET unread event count for a camera. Returns None on error.
+
+    API: GET /v11/video_inputs/{id} -> field numberOfUnreadEvents. Mirrors
+    ``cmd_unread`` (the dedicated /unread_events_count endpoint 404s in prod).
+    """
+    bc = _bc()
+    r = session.get(f"{bc.CLOUD_API}/v11/video_inputs/{cam_id}", timeout=10)
+    if r.status_code != 200:
+        return None
+    return cast(int, r.json().get("numberOfUnreadEvents", 0))
+
+
+def get_motion_detection(
+    session: "requests.Session", cam_id: str
+) -> dict[str, Any] | None:
+    """GET motion-detection config (enabled/motionAlarmConfiguration). None on error."""
+    bc = _bc()
+    r = session.get(f"{bc.CLOUD_API}/v11/video_inputs/{cam_id}/motion", timeout=10)
+    if r.status_code != 200:
+        return None
+    return cast("dict[str, Any]", r.json())
+
+
+def set_motion_detection(
+    session: "requests.Session",
+    cam_id: str,
+    enabled: bool,
+    sensitivity: str | None = None,
+) -> tuple[bool, str | None]:
+    """Set motion detection enabled + optional sensitivity. Returns (ok, error_reason).
+
+    sensitivity one of OFF/LOW/MEDIUM_LOW/MEDIUM_HIGH/HIGH/SUPER_HIGH. Mirrors
+    ``cmd_motion``'s PUT body: {"enabled", "motionAlarmConfiguration"}.
+    """
+    bc = _bc()
+    payload: dict[str, Any] = {"enabled": enabled}
+    if sensitivity is not None:
+        payload["motionAlarmConfiguration"] = sensitivity
+    r = session.put(
+        f"{bc.CLOUD_API}/v11/video_inputs/{cam_id}/motion",
+        json=payload,
+        timeout=10,
+    )
+    if r.status_code in (200, 201, 204):
+        return True, None
+    return False, _map_write_error(r)
+
+
+def get_intrusion_detection(
+    session: "requests.Session", cam_id: str
+) -> dict[str, Any] | None:
+    """GET intrusion-detection config. Returns None on error/442 (unsupported)."""
+    bc = _bc()
+    r = session.get(
+        f"{bc.CLOUD_API}/v11/video_inputs/{cam_id}/intrusionDetectionConfig",
+        timeout=10,
+    )
+    if r.status_code != 200:
+        return None
+    return cast("dict[str, Any]", r.json())
+
+
+def set_intrusion_detection(
+    session: "requests.Session",
+    cam_id: str,
+    enabled: bool,
+    detection_mode: str | None = None,
+    sensitivity: int | None = None,
+    distance: int | None = None,
+) -> tuple[bool, str | None]:
+    """Set intrusion-detection config. Returns (ok, error_reason).
+
+    Mirrors ``cmd_intrusion``'s PUT body: {"enabled", "detectionMode",
+    "sensitivity" (0-7), "distance" (1-8)}. HTTP 442 = unsupported model.
+    """
+    bc = _bc()
+    payload: dict[str, Any] = {"enabled": enabled}
+    if detection_mode is not None:
+        payload["detectionMode"] = detection_mode
+    if sensitivity is not None:
+        payload["sensitivity"] = sensitivity
+    if distance is not None:
+        payload["distance"] = distance
+    r = session.put(
+        f"{bc.CLOUD_API}/v11/video_inputs/{cam_id}/intrusionDetectionConfig",
+        json=payload,
+        timeout=10,
+    )
+    if r.status_code in (200, 201, 204):
+        return True, None
+    return False, _map_write_error(r)
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +508,70 @@ async def async_get_privacy_mode(
 
 async def async_check_token_age(cfg: ConfigDict) -> str:
     return await _to_thread(check_token_age, cfg)
+
+
+async def async_get_light_override(
+    session: "requests.Session", cam_id: str
+) -> dict[str, Any] | None:
+    return await _to_thread(get_light_override, session, cam_id)
+
+
+async def async_set_light_override(
+    session: "requests.Session",
+    cam_id: str,
+    front_on: bool,
+    wall_on: bool | None = None,
+    intensity: float | None = None,
+) -> tuple[bool, str | None]:
+    return await _to_thread(
+        set_light_override, session, cam_id, front_on, wall_on, intensity
+    )
+
+
+async def async_get_unread_count(
+    session: "requests.Session", cam_id: str
+) -> int | None:
+    return await _to_thread(get_unread_count, session, cam_id)
+
+
+async def async_get_motion_detection(
+    session: "requests.Session", cam_id: str
+) -> dict[str, Any] | None:
+    return await _to_thread(get_motion_detection, session, cam_id)
+
+
+async def async_set_motion_detection(
+    session: "requests.Session",
+    cam_id: str,
+    enabled: bool,
+    sensitivity: str | None = None,
+) -> tuple[bool, str | None]:
+    return await _to_thread(set_motion_detection, session, cam_id, enabled, sensitivity)
+
+
+async def async_get_intrusion_detection(
+    session: "requests.Session", cam_id: str
+) -> dict[str, Any] | None:
+    return await _to_thread(get_intrusion_detection, session, cam_id)
+
+
+async def async_set_intrusion_detection(
+    session: "requests.Session",
+    cam_id: str,
+    enabled: bool,
+    detection_mode: str | None = None,
+    sensitivity: int | None = None,
+    distance: int | None = None,
+) -> tuple[bool, str | None]:
+    return await _to_thread(
+        set_intrusion_detection,
+        session,
+        cam_id,
+        enabled,
+        detection_mode,
+        sensitivity,
+        distance,
+    )
 
 
 # ---------------------------------------------------------------------------

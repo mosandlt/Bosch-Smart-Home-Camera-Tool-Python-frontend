@@ -4,7 +4,8 @@ Shows all cameras as cards with status, snapshot thumbnail, and privacy toggle.
 Bottom toolbar: Settings, Logs (stub), Reload Cameras.
 
 TODO Phase 2: async background refresh so card loading doesn't block UI.
-TODO Phase 3: unread event badges on each camera card.
+
+Unread event badges are wired on each camera card (see CameraCard).
 """
 
 from __future__ import annotations
