@@ -1,5 +1,66 @@
 # Changelog
 
+## 0.3.0-alpha — family-parity batch: sound detection, wifi, lighting schedule, recording, siren, pan, rules, friends
+
+Second family-parity wiring pass (docs/family-parity-plan.md §2b), following
+0.2.0's light/motion/intrusion/unread-count. Nine capabilities newly wired to
+the camera detail page, all following the existing GET-then-render /
+Apply-writes-back convention, all backed by new `cli_bridge.py` sync +
+`async_*` wrapper pairs mirroring the Python CLI's `cmd_*` handlers 1:1:
+
+- **Glass-break / fire-alarm sound detection** (Gen2 only): `async_get/set_audio_detection`, `GET`/`PUT .../audioDetectionConfig` — both fields always sent together (server resets the omitted one otherwise)
+- **WiFi signal info** (read-only): `async_get_wifi_info`, `GET .../wifiinfo`
+- **Lighting schedule** (read + write, outdoor Eyes cameras): `async_get/set_lighting_schedule`, `GET`/`PUT .../lighting_options` — read-modify-write, forces `scheduleStatus=FOLLOW_SCHEDULE` on write
+- **Cloud recording sound toggle**: `async_get/set_recording_options`, `GET`/`PUT .../recording_options`
+- **Siren trigger/stop + duration** (Gen2 Indoor II only): `async_trigger_siren` (existing `/panic_alarm` pattern) + new `async_get/set_alarm_settings` for the 10-300s duration field
+- **Pan control**: the pre-existing Phase-2 slider stub is now wired to `async_get/set_pan`, `GET`/`PUT .../pan`
+- **Automation rules editor**: list/add/delete (`async_list/add/edit/delete_rule`, full CRUD `GET`/`POST`/`PUT`/`DELETE .../rules`)
+- **Friends / camera sharing**: list/invite/remove/share/unshare (`GET`/`POST`/`DELETE`/`PUT /v11/friends*`)
+- **Account-level feature flags** (`cli_bridge.get_feature_flags` only, no UI card yet — normalizes Bosch's dict-or-list response shape, mirroring `cmd_feature_flags`)
+
+Bug-hunt (3 parallel agents, mandatory before release) found and fixed 3 real
+issues before shipping:
+1. **Late-binding closure bug** in the friends-sharing row's revert-on-failure
+   (`_toggle_share` referenced the free variable `share_switch`, which by the
+   time any row's callback actually fired had already been reassigned to the
+   LAST friend's switch — a failed unshare on any earlier row would revert
+   the wrong switch). Fixed via a default-arg capture, same pattern already
+   used for `friend_id`/`rule_id`.
+2. **Re-entrant write recursion**: NiceGUI's `ValueElement` fires
+   `on_value_change` for ANY value change regardless of source — so the
+   recording/share switches' own `set_value(not e.value)` revert-on-failure
+   re-triggered the same write handler, which (during a sustained outage)
+   recurses indefinitely, hammering the API from one failed toggle. The
+   recording switch's initial-load `set_value()` had the same landmine (an
+   unsolicited write could fire on page load whenever the server's real
+   value differed from the switch's `False` default). Fixed with a
+   suppress-next-firing guard on both switches (this pre-existing pattern
+   from the 0.2.0 privacy/light switches was NOT touched — out of scope for
+   this diff, flagged as a known landmine there too).
+3. **`get_feature_flags` type-safety gap**: a bare `cast("dict", ...)` on a
+   list-shaped API response would produce a dict-typed list that crashes on
+   first `.get()` call. Now normalizes list-of-dicts / list-of-scalars / dict
+   exactly like the CLI's own `cmd_feature_flags`.
+
+Cross-checked every new endpoint/payload against `bosch_camera.py`'s
+`cmd_audio_detection`/`cmd_wifi`/`cmd_lighting_schedule`/`cmd_recording`/
+`cmd_siren`/`cmd_pan`/`cmd_feature_flags`/`cmd_rules`/`cmd_friends` — no
+mismatches found. `share_camera`/`unshare_camera` correctly preserve other
+share-entry fields (e.g. `shareTime`) when rebuilding the array.
+
+Scoped out of this release (tracked in README Phase 4): two-way intercom
+(the CLI itself is listen-only — no bidirectional media tunnel via the cloud
+API), zones/privacy-masks visual editor (needs a new canvas/SVG overlay
+component — no drawing primitive exists in this codebase yet), local-disk
+NVR/recording browse (a different feature from the cloud `recording_options`
+sound toggle shipped here — no local recording pipeline in this frontend),
+and a diagnostics UI card for `get_feature_flags` (function exists, wired to
+nothing yet).
+
+56 new `cli_bridge.py` functions (28 sync + 28 async twins) + 13 new UI
+sections/wirings in `camera_detail.py`. 505 tests (was 416), 99.23% coverage
+(gate 98%), mypy --strict / ruff / ruff format / codespell / pip-audit clean.
+
 ## 0.2.0-alpha — CI uplift to Gold tier + light/motion/intrusion/unread-count wiring
 
 - **CI uplift** (family Gold-tier parity, reference: HA integration): coverage

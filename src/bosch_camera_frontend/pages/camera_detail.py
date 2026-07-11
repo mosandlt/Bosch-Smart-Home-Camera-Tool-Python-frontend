@@ -311,19 +311,44 @@ async def camera_detail_page(name: str) -> None:
                 # Pan control (360 cameras only)
                 pan_limit = cam_info.get("pan_limit", 0)
                 if pan_limit and pan_limit > 0:
-                    ui.label(f"Pan (±{pan_limit}°):").classes(
+                    pan_label = ui.label(f"Pan (±{pan_limit}°): loading…").classes(
                         "text-sm self-center col-span-2"
                     )
-                    ui.slider(
-                        min=-pan_limit,
-                        max=pan_limit,
-                        step=1,
-                        value=0,
-                        on_change=lambda e: ui.notify(
-                            # TODO Phase 2: call cmd_pan equivalent
-                            f"Pan to {e.value}° — Phase 2",
-                            color="info",
-                        ),
+                    pan_slider = (
+                        ui.slider(
+                            min=-pan_limit,
+                            max=pan_limit,
+                            step=1,
+                            value=0,
+                        )
+                        .classes("col-span-2")
+                        .props("label-always")
+                    )
+
+                    async def _load_pan() -> None:
+                        data = await cli_bridge.async_get_pan(session, cam_id)
+                        if data is not None:
+                            pos = int(data.get("currentAbsolutePosition", 0))
+                            pan_slider.set_value(pos)
+                            pan_label.set_text(f"Pan (±{pan_limit}°): {pos}°")
+                        else:
+                            pan_label.set_text(f"Pan (±{pan_limit}°): unavailable")
+
+                    async def _apply_pan() -> None:
+                        target = int(pan_slider.value)
+                        ok, err = await cli_bridge.async_set_pan(
+                            session, cam_id, target
+                        )
+                        if ok:
+                            pan_label.set_text(f"Pan (±{pan_limit}°): {target}°")
+                            ui.notify(f"Pan set to {target}°", color="info")
+                        else:
+                            ui.notify(f"Pan failed: {err}", color="negative")
+                            await _load_pan()
+
+                    ui.timer(0.2, _load_pan, once=True)
+                    ui.button("Move", icon="control_camera", on_click=_apply_pan).props(
+                        "dense flat"
                     ).classes("col-span-2")
 
         # ── Motion Detection section ───────────────────────────────────────
@@ -452,6 +477,425 @@ async def camera_detail_page(name: str) -> None:
             ui.button("Apply", icon="check", on_click=_apply_intrusion).props(
                 "dense flat"
             ).classes("mt-2")
+
+        # ── Sound Detection (glass-break / fire-alarm, Gen2 only) ──────────
+        is_gen2 = str(cam_info.get("model", "")).startswith("HOME_")
+        if is_gen2:
+            with ui.card().classes("w-full p-4"):
+                ui.label("Sound Detection").classes("font-semibold mb-2")
+                sound_state_label = ui.label("Loading…").classes("text-sm")
+                with ui.row().classes("items-center gap-3"):
+                    glass_break_switch = ui.switch("Glass Break")
+                    fire_alarm_switch = ui.switch("Fire/Smoke Alarm")
+
+                async def _load_sound_detection() -> None:
+                    data = await cli_bridge.async_get_audio_detection(session, cam_id)
+                    if data is not None:
+                        glass_break_switch.set_value(
+                            bool(data.get("detectGlassBreak", False))
+                        )
+                        fire_alarm_switch.set_value(
+                            bool(data.get("detectFireAlarm", False))
+                        )
+                        sound_state_label.set_text("Sound detection loaded")
+                    else:
+                        sound_state_label.set_text(
+                            "Sound detection: unavailable (not supported on this model?)"
+                        )
+
+                async def _apply_sound_detection() -> None:
+                    ok, err = await cli_bridge.async_set_audio_detection(
+                        session,
+                        cam_id,
+                        glass_break=glass_break_switch.value,
+                        fire_alarm=fire_alarm_switch.value,
+                    )
+                    if ok:
+                        sound_state_label.set_text("Sound detection updated")
+                        ui.notify("Sound detection updated", color="info")
+                    else:
+                        ui.notify(
+                            f"Sound detection update failed: {err}", color="negative"
+                        )
+                        await _load_sound_detection()
+
+                ui.timer(0.2, _load_sound_detection, once=True)
+                ui.button("Apply", icon="check", on_click=_apply_sound_detection).props(
+                    "dense flat"
+                ).classes("mt-2")
+
+        # ── WiFi Info (read-only) ───────────────────────────────────────────
+        with ui.card().classes("w-full p-4"):
+            ui.label("WiFi").classes("font-semibold mb-2")
+            wifi_label = ui.label("Loading…").classes("text-sm")
+
+            async def _load_wifi() -> None:
+                data = await cli_bridge.async_get_wifi_info(session, cam_id)
+                if data is not None:
+                    ssid = data.get("ssid", data.get("SSID", "?"))
+                    rssi = data.get(
+                        "rssi", data.get("RSSI", data.get("signalLevel", "?"))
+                    )
+                    wifi_label.set_text(f"SSID: {ssid}   RSSI: {rssi}")
+                else:
+                    wifi_label.set_text("WiFi info unavailable (wired camera?)")
+
+            ui.timer(0.2, _load_wifi, once=True)
+            ui.button("Refresh", icon="refresh", on_click=_load_wifi).props(
+                "dense flat"
+            ).classes("mt-2")
+
+        # ── Lighting Schedule (outdoor Eyes cameras with LED only) ─────────
+        if cam_info.get("has_light"):
+            with ui.card().classes("w-full p-4"):
+                ui.label("Lighting Schedule").classes("font-semibold mb-2")
+                lighting_state_label = ui.label("Loading…").classes("text-sm")
+                with ui.row().classes("items-center gap-3"):
+                    lighting_on_time = ui.input("On time (HH:MM)").classes("w-32")
+                    lighting_off_time = ui.input("Off time (HH:MM)").classes("w-32")
+                    lighting_motion_switch = ui.switch("Trigger on motion")
+                    lighting_threshold = ui.number(
+                        label="Darkness threshold (0-1)",
+                        min=0.0,
+                        max=1.0,
+                        step=0.05,
+                        value=0.3,
+                    ).classes("w-40")
+
+                async def _load_lighting_schedule() -> None:
+                    data = await cli_bridge.async_get_lighting_schedule(session, cam_id)
+                    if data is not None:
+                        lighting_on_time.set_value(
+                            str(data.get("generalLightOnTime", ""))[:5]
+                        )
+                        lighting_off_time.set_value(
+                            str(data.get("generalLightOffTime", ""))[:5]
+                        )
+                        lighting_motion_switch.set_value(
+                            bool(data.get("lightOnMotion", False))
+                        )
+                        lighting_threshold.set_value(data.get("darknessThreshold", 0.3))
+                        lighting_state_label.set_text(
+                            f"Schedule: {data.get('scheduleStatus', '?')}"
+                        )
+                    else:
+                        lighting_state_label.set_text(
+                            "Lighting schedule: unavailable (offline or not supported)"
+                        )
+
+                async def _apply_lighting_schedule() -> None:
+                    ok, err = await cli_bridge.async_set_lighting_schedule(
+                        session,
+                        cam_id,
+                        on_time=lighting_on_time.value or None,
+                        off_time=lighting_off_time.value or None,
+                        light_on_motion=lighting_motion_switch.value,
+                        darkness_threshold=lighting_threshold.value,
+                    )
+                    if ok:
+                        lighting_state_label.set_text("Lighting schedule updated")
+                        ui.notify("Lighting schedule updated", color="info")
+                    else:
+                        ui.notify(
+                            f"Lighting schedule update failed: {err}", color="negative"
+                        )
+                        await _load_lighting_schedule()
+
+                ui.timer(0.2, _load_lighting_schedule, once=True)
+                ui.button(
+                    "Apply", icon="check", on_click=_apply_lighting_schedule
+                ).props("dense flat").classes("mt-2")
+
+        # ── Recording Options (cloud recording sound) ──────────────────────
+        with ui.card().classes("w-full p-4"):
+            ui.label("Cloud Recording").classes("font-semibold mb-2")
+            recording_state_label = ui.label("Loading…").classes("text-sm")
+            recording_switch = ui.switch("Record Sound")
+            # Suppress the NEXT on_value_change firing caused by a
+            # *programmatic* set_value() (initial load, or the revert-on-
+            # failure below) — NiceGUI's ValueElement fires on_value_change
+            # for ANY value change regardless of source (verified against
+            # nicegui.binding.BindableProperty.__set__: it only skips when
+            # the new value equals the current one). Without this guard,
+            # (a) the initial load can itself trigger an unwanted API write
+            # whenever the server's real value differs from the switch's
+            # False default, and (b) a revert-on-failure re-fires the same
+            # handler with the opposite value, which — if the outage is
+            # ongoing — recurses indefinitely, hammering the API from one
+            # failed toggle (bug-hunt finding 2026-07-11).
+            _recording_suppress_next = False
+
+            async def _load_recording() -> None:
+                nonlocal _recording_suppress_next
+                data = await cli_bridge.async_get_recording_options(session, cam_id)
+                if data is not None:
+                    _recording_suppress_next = True
+                    recording_switch.set_value(bool(data.get("recordSound", False)))
+                    recording_state_label.set_text("Recording options loaded")
+                else:
+                    recording_state_label.set_text("Recording options unavailable")
+
+            async def _toggle_recording(e: Any) -> None:
+                nonlocal _recording_suppress_next
+                if _recording_suppress_next:
+                    _recording_suppress_next = False
+                    return
+                ok, err = await cli_bridge.async_set_recording_options(
+                    session, cam_id, sound_on=e.value
+                )
+                if ok:
+                    recording_state_label.set_text(
+                        f"Record Sound: {'ON' if e.value else 'OFF'}"
+                    )
+                    ui.notify("Recording options updated", color="info")
+                else:
+                    _recording_suppress_next = True
+                    recording_switch.set_value(not e.value)
+                    ui.notify(f"Recording update failed: {err}", color="negative")
+
+            recording_switch.on_value_change(_toggle_recording)
+            ui.timer(0.2, _load_recording, once=True)
+
+        # ── Siren / Alarm (Gen2 Indoor II only) ─────────────────────────────
+        if cam_info.get("model") == "HOME_Eyes_Indoor":
+            with ui.card().classes("w-full p-4"):
+                ui.label("Siren / Alarm").classes("font-semibold mb-2")
+                siren_state_label = ui.label("Ready").classes("text-sm")
+                with ui.row().classes("items-center gap-3"):
+                    siren_duration = ui.number(
+                        label="Duration (s, 10-300)", min=10, max=300, step=5, value=30
+                    ).classes("w-40")
+
+                    async def _set_siren_duration() -> None:
+                        secs = int(siren_duration.value or 30)
+                        ok, err = await cli_bridge.async_set_siren_duration(
+                            session, cam_id, secs
+                        )
+                        if ok:
+                            siren_state_label.set_text(f"Duration set to {secs}s")
+                            ui.notify(f"Siren duration set to {secs}s", color="info")
+                        else:
+                            ui.notify(f"Set duration failed: {err}", color="negative")
+
+                    ui.button(
+                        "Set Duration", icon="timer", on_click=_set_siren_duration
+                    ).props("dense flat")
+
+                async def _trigger_siren() -> None:
+                    ok, err = await cli_bridge.async_trigger_siren(session, cam_id)
+                    if ok:
+                        siren_state_label.set_text("Siren TRIGGERED 🔔")
+                        ui.notify("Siren triggered", color="warning")
+                    else:
+                        ui.notify(f"Siren trigger failed: {err}", color="negative")
+
+                async def _stop_siren() -> None:
+                    ok, err = await cli_bridge.async_trigger_siren(
+                        session, cam_id, stop=True
+                    )
+                    if ok:
+                        siren_state_label.set_text("Siren stopped")
+                        ui.notify("Siren stopped", color="info")
+                    else:
+                        ui.notify(f"Siren stop failed: {err}", color="negative")
+
+                with ui.row().classes("gap-2 mt-2"):
+                    ui.button(
+                        "Trigger Siren",
+                        icon="notifications_active",
+                        on_click=_trigger_siren,
+                    ).props("color=negative dense")
+                    ui.button("Stop", icon="stop", on_click=_stop_siren).props(
+                        "dense flat"
+                    )
+
+        # ── Automation Rules (per-camera CRUD) ──────────────────────────────
+        with ui.card().classes("w-full p-4"):
+            ui.label("Automation Rules").classes("font-semibold mb-2")
+            rules_container = ui.column().classes("w-full gap-1")
+
+            async def _load_rules() -> None:
+                with rules_container:
+                    rules_container.clear()
+                    rules = await cli_bridge.async_list_rules(session, cam_id)
+                    if not rules:
+                        ui.label("No rules configured.").classes(
+                            "text-sm text-gray-400"
+                        )
+                        return
+                    for rule in rules:
+                        rule_id = str(rule.get("id", ""))
+                        with ui.row().classes("items-center gap-2 w-full"):
+                            ui.icon(
+                                "check_circle" if rule.get("isActive") else "cancel",
+                                color="positive" if rule.get("isActive") else "grey",
+                            )
+                            ui.label(
+                                f"{rule.get('name', '?')}: "
+                                f"{rule.get('startTime', '?')}–{rule.get('endTime', '?')}"
+                            ).classes("text-sm flex-grow")
+
+                            async def _delete(rid: str = rule_id) -> None:
+                                ok, err = await cli_bridge.async_delete_rule(
+                                    session, cam_id, rid
+                                )
+                                if ok:
+                                    ui.notify("Rule deleted", color="info")
+                                    await _load_rules()
+                                else:
+                                    ui.notify(f"Delete failed: {err}", color="negative")
+
+                            ui.button(icon="delete", on_click=_delete).props(
+                                "dense flat color=negative"
+                            )
+
+            with ui.row().classes("items-center gap-2 mt-2"):
+                new_rule_name = ui.input("Name").classes("w-32")
+                new_rule_start = ui.input("Start (HH:MM)").classes("w-28")
+                new_rule_end = ui.input("End (HH:MM)").classes("w-28")
+
+                async def _add_rule() -> None:
+                    if (
+                        not new_rule_name.value
+                        or not new_rule_start.value
+                        or not new_rule_end.value
+                    ):
+                        ui.notify("Name, start and end are required", color="negative")
+                        return
+                    ok, err = await cli_bridge.async_add_rule(
+                        session,
+                        cam_id,
+                        name=new_rule_name.value,
+                        start=new_rule_start.value,
+                        end=new_rule_end.value,
+                        weekdays=[0, 1, 2, 3, 4, 5, 6],
+                    )
+                    if ok:
+                        new_rule_name.set_value("")
+                        new_rule_start.set_value("")
+                        new_rule_end.set_value("")
+                        ui.notify("Rule added", color="info")
+                        await _load_rules()
+                    else:
+                        ui.notify(f"Add rule failed: {err}", color="negative")
+
+                ui.button("Add Rule", icon="add", on_click=_add_rule).props(
+                    "dense flat"
+                )
+
+            ui.timer(0.3, _load_rules, once=True)
+
+        # ── Friends / Camera Sharing (account-level) ────────────────────────
+        with ui.card().classes("w-full p-4"):
+            ui.label("Friends & Sharing").classes("font-semibold mb-2")
+            friends_container = ui.column().classes("w-full gap-1")
+
+            async def _load_friends() -> None:
+                with friends_container:
+                    friends_container.clear()
+                    friends = await cli_bridge.async_list_friends(session)
+                    if not friends:
+                        ui.label("No friends invited.").classes("text-sm text-gray-400")
+                        return
+                    for friend in friends:
+                        friend_id = str(friend.get("id", ""))
+                        shared = friend.get("sharedVideoInputs", [])
+                        is_shared = any(
+                            str(s.get("videoInputId")) == str(cam_id) for s in shared
+                        )
+                        with ui.row().classes("items-center gap-2 w-full"):
+                            ui.label(
+                                f"{friend.get('nickName', friend.get('invitationEmail', '?'))} "
+                                f"({friend.get('status', '?')})"
+                            ).classes("text-sm flex-grow")
+                            share_switch = ui.switch(
+                                "Shares this camera", value=is_shared
+                            )
+
+                            async def _toggle_share(
+                                e: Any,
+                                fid: str = friend_id,
+                                # Bind the *current* iteration's switch, not
+                                # the free variable `share_switch` — without
+                                # this default-arg capture, every row's
+                                # revert-on-failure would resolve `share_switch`
+                                # at call time (late binding) and always hit
+                                # the LAST friend's switch instead of the one
+                                # actually toggled (bug-hunt finding 2026-07-11).
+                                switch: Any = share_switch,
+                                # One-element list (not a bare bool) so each
+                                # row's closure gets its own independent cell
+                                # — evaluated fresh per loop iteration, same
+                                # reasoning as the `switch` default above.
+                                # Suppresses the re-entrant on_value_change
+                                # firing that switch.set_value() below would
+                                # otherwise trigger (see the recording-switch
+                                # comment for the full NiceGUI mechanism);
+                                # without it, a persistent outage would make
+                                # a single failed toggle recurse indefinitely.
+                                suppress: list[bool] = [False],  # noqa: B006
+                            ) -> None:
+                                if suppress[0]:
+                                    suppress[0] = False
+                                    return
+                                if e.value:
+                                    ok, err = await cli_bridge.async_share_camera(
+                                        session, fid, cam_id
+                                    )
+                                else:
+                                    ok, err = await cli_bridge.async_unshare_camera(
+                                        session, fid, cam_id
+                                    )
+                                if ok:
+                                    ui.notify("Sharing updated", color="info")
+                                else:
+                                    suppress[0] = True
+                                    switch.set_value(not e.value)
+                                    ui.notify(
+                                        f"Sharing update failed: {err}",
+                                        color="negative",
+                                    )
+
+                            share_switch.on_value_change(_toggle_share)
+
+                            async def _remove(fid: str = friend_id) -> None:
+                                ok, err = await cli_bridge.async_remove_friend(
+                                    session, fid
+                                )
+                                if ok:
+                                    ui.notify("Friend removed", color="info")
+                                    await _load_friends()
+                                else:
+                                    ui.notify(f"Remove failed: {err}", color="negative")
+
+                            ui.button(icon="person_remove", on_click=_remove).props(
+                                "dense flat color=negative"
+                            )
+
+            with ui.row().classes("items-center gap-2 mt-2"):
+                new_friend_email = ui.input("Email").classes("w-48")
+                new_friend_nick = ui.input("Nickname").classes("w-32")
+
+                async def _invite() -> None:
+                    if not new_friend_email.value:
+                        ui.notify("Email is required", color="negative")
+                        return
+                    ok, err = await cli_bridge.async_invite_friend(
+                        session, new_friend_email.value, new_friend_nick.value or ""
+                    )
+                    if ok:
+                        new_friend_email.set_value("")
+                        new_friend_nick.set_value("")
+                        ui.notify("Invitation sent", color="info")
+                        await _load_friends()
+                    else:
+                        ui.notify(f"Invite failed: {err}", color="negative")
+
+                ui.button("Invite", icon="person_add", on_click=_invite).props(
+                    "dense flat"
+                )
+
+            ui.timer(0.3, _load_friends, once=True)
 
         # ── Recent Events table ────────────────────────────────────────────
         with ui.card().classes("w-full p-4"):

@@ -4,7 +4,7 @@
 > Replaces the official iOS/Android app with a browser-based interface.
 
 > **Alpha — on PyPI:** `pip install bosch-camera-frontend` (self-contained, pulls the CLI). See [Installation](#installation).
-> Current release: **v0.1.6-alpha** · Phase 1 working end-to-end (dashboard, camera detail, settings). Phase 2 **live video has landed**: a snapshot-tier near-live view plus an optional real **WebRTC/HLS player** (via go2rtc) with audio, Picture-in-Picture and fullscreen. Phase 3 (FCM push events + in-app auth) is next.
+> Current release: **v0.3.0-alpha** · Phase 1 working end-to-end (dashboard, camera detail, settings). Phase 2 **live video has landed**: a snapshot-tier near-live view plus an optional real **WebRTC/HLS player** (via go2rtc) with audio, Picture-in-Picture and fullscreen — plus a growing set of Phase 4 device-control cards (pan, sound detection, WiFi, lighting schedule, recording, siren, rules, friends/sharing). Phase 3 (FCM push events + in-app auth) is next.
 
 > **Status:** Live cloud camera-list (no longer hostage to a stale local config), HA/Apple-style design (rounded-2xl cards, 16:9 hero snapshot, soft shadows, translucent header), structured privacy-toggle error reporting ("Camera offline" / "Auth expired" instead of "check token"), in-app Reload-from-disk button on Settings (after running `python3 bosch_camera.py token fix` in a terminal). The camera-detail Live Stream section now plays real WebRTC when [go2rtc](https://github.com/AlexxIT/go2rtc) is installed and falls back to a ~5 s snapshot loop otherwise.
 >
@@ -264,11 +264,17 @@ Mapped from iOS app v2.11.2. Phase 1 shipped in v0.1.1-alpha; the live-video cor
 - [x] Motion detection enable + sensitivity select wired to live API (`async_get/set_motion_detection`, `PUT .../motion`)
 - [x] Intrusion detection enable + mode/sensitivity/distance wired to live API (`async_get/set_intrusion_detection`, `PUT .../intrusionDetectionConfig`)
 - [x] Unread event badge on each camera card (`async_get_unread_count`, `GET /v11/video_inputs/{id}` → `numberOfUnreadEvents`)
-- [ ] Pan control slider (CAMERA_360) wired to Bosch `cmd_pan` (currently a stub)
+- [x] Pan control slider (CAMERA_360) wired to Bosch `cmd_pan` (`async_get/set_pan`, `GET`/`PUT .../pan`)
+- [x] Glass-break / fire-alarm sound detection toggle (Gen2, `async_get/set_audio_detection`, `GET`/`PUT .../audioDetectionConfig`)
+- [x] WiFi signal strength display (read-only, `async_get_wifi_info`, `GET .../wifiinfo`)
+- [x] Lighting schedule (read + write, outdoor Eyes cameras, `async_get/set_lighting_schedule`, `GET`/`PUT .../lighting_options`)
+- [x] Recording sound toggle (`async_get/set_recording_options`, `GET`/`PUT .../recording_options`)
+- [x] Siren trigger button + duration (Gen2 Indoor II only, `async_trigger_siren` / `async_get/set_alarm_settings`)
+- [x] Automation rules editor (list/add/delete, `async_list/add/edit/delete_rule`, `GET`/`POST`/`PUT`/`DELETE .../rules`)
+- [x] Camera sharing management (friends: list/invite/remove/share/unshare, `async_*_friend`/`async_*share_camera`, `GET`/`POST`/`DELETE`/`PUT /v11/friends*`)
 - [ ] Notifications toggle wired to live API (currently a stub)
 - [ ] Auto-follow toggle
 - [ ] Audio alarm threshold slider
-- [ ] Recording sound toggle
 - [ ] Video quality select (auto/high/low)
 - [ ] Live runtime verification on real hardware (go2rtc + camera + browser)
 
@@ -284,20 +290,13 @@ Mapped from iOS app v2.11.2. Phase 1 shipped in v0.1.1-alpha; the live-video cor
 
 ### Phase 4 — Advanced Features
 
-- [ ] Intercom (listen-only audio player)
-- [ ] Siren trigger button (Gen2 Indoor II only)
+- [ ] Intercom (listen-only audio player) — cloud connection-tunnel plumbing exists CLI-side, not yet wired here
 - [ ] RCP protocol reads (camera info, clock, dimmer)
-- [ ] WiFi signal strength display
 - [ ] Ambient light sensor value
-- [ ] Camera sharing management (friends)
-- [ ] Automation rules editor
 - [ ] Multi-camera grid view
-- [ ] Glass-break / fire-alarm sound detection toggle
-- [ ] Zones / privacy-masks editor (read+write UI)
-- [ ] Rules / friends / sharing UI
-- [ ] Lighting schedule (read + write)
-- [ ] NVR / recording status display
-- [ ] Diagnostics display (RCP/ONVIF/feature flags/maintenance)
+- [ ] Zones / privacy-masks editor (read+write UI) — needs a new canvas/SVG overlay component, no reusable drawing primitive exists in this codebase yet
+- [ ] NVR / recording status display — local-disk clip browse/prune is a different feature from the cloud `recording_options` sound toggle above (which IS wired); not ported (no local recording pipeline in this frontend)
+- [ ] Diagnostics display (RCP/ONVIF/feature flags/maintenance) — `cli_bridge.get_feature_flags` exists (list-normalized) but has no UI card yet
 
 ### Phase 5 — Polish
 
@@ -327,7 +326,7 @@ How this tool compares to the rest of the Bosch Smart Home Camera ecosystem (Hom
 
 | Feature | [Home Assistant Integration](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-HomeAssistant) | [Python CLI Tool](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python) | [ioBroker Adapter](https://github.com/mosandlt/ioBroker.bosch-smart-home-camera) | [MCP Server](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-MCP) | [Frontend (NiceGUI)](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend) | [Node-RED](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-NodeRED) |
 |---|---|---|---|---|---|---|
-| **Maturity** | v13.5+ — HA Quality Scale **Platinum** | v10.10+ stable (Mini-NVR BETA) | v1.5+ stable · npm | v1.5+ stable · PyPI | v0.1.2 **alpha** · PyPI | v0.2.3 **alpha** · npm |
+| **Maturity** | v13.5+ — HA Quality Scale **Platinum** | v10.10+ stable (Mini-NVR BETA) | v1.5+ stable · npm | v1.5+ stable · PyPI | v0.3.0 **alpha** · PyPI | v0.2.3 **alpha** · npm |
 | **Platform** | Home Assistant (HACS) | Standalone Python 3.10+ CLI | ioBroker (npm) | Python 3.10+ · pipx / uvx · stdio + streamable-HTTP for MCP clients (Claude Desktop, Claude Code, custom) | NiceGUI web app · Python 3.10+ | Node-RED palette · npm |
 | **Login** | OAuth2 PKCE (browser) | OAuth2 PKCE (browser) | OAuth2 PKCE (browser) | OAuth2 PKCE (browser, one-time) | ◑ shares CLI `bosch_config.json` | ◑ refresh-token from CLI |
 | **Snapshots** | ✅ Native `Camera.image` | ✅ `snapshot` command | ✅ File-store + base64 DP | ✅ `bosch_camera_snapshot` (LAN-only) | ✅ live + event fallback | ✅ `snapshot` node |
@@ -338,20 +337,20 @@ How this tool compares to the rest of the Bosch Smart Home Camera ecosystem (Hom
 | **Privacy mode** | ✅ switch entity | ✅ command | ✅ DP | ✅ `bosch_camera_privacy_set` (LAN-fallback via `prefer_local`) | ✅ toggle | ✅ `privacy` node |
 | **Front spotlight (Gen1/Gen2)** | ✅ light entity | ✅ command | ✅ DP | ✅ `bosch_camera_light_set` (LAN-fallback) | ❌ *(Phase 2 stub)* | ❌ |
 | **RGB wallwasher (Gen2 Outdoor II)** | ✅ light w/ RGB | ◑ on/off only — no RGB | ✅ color + brightness DPs | ❌ *(on/off only — RGB not exposed)* | ❌ | ❌ |
-| **Panic-alarm siren** | ✅ button entity *(Gen2 Indoor II)* | ✅ command *(Gen2 Indoor II only)* | ✅ DP | ✅ `bosch_camera_siren_trigger` *(Gen2 Indoor II only)* | ❌ | ❌ |
+| **Panic-alarm siren** | ✅ button entity *(Gen2 Indoor II)* | ✅ command *(Gen2 Indoor II only)* | ✅ DP | ✅ `bosch_camera_siren_trigger` *(Gen2 Indoor II only)* | ✅ trigger + duration *(Gen2 Indoor II only)* | ❌ |
 | **Image rotation 180°** | ✅ switch | ❌ | ✅ DP | ❌ | ❌ | ❌ |
 | **Motion / person / audio events** | ✅ FCM push + polling fallback | ◑ `watch` command only (events cmd removed) | ✅ FCM push + polling fallback | ✅ `bosch_camera_events` (on-demand pull) | ◑ pull-only events table | ✅ `event` node (poll) |
 | **Motion edge-trigger state** | ✅ `binary_sensor.motion` | n/a | ✅ `motion_active` DP *(v0.5.3)* | n/a *(request-response, no subscription)* | ❌ | ❌ |
 | **Auto-snapshot on motion** | ✅ refreshes Camera entity | n/a | ✅ writes `last_event_image` base64 *(v0.5.3)* | n/a *(no background loop)* | ❌ | ❌ |
 | **Synthetic motion trigger (external sensor)** | ✅ service | n/a | ✅ DP | ❌ | ❌ | ❌ |
-| **Motion zones / privacy masks (read)** | ✅ | ✅ | ✅ read-only *(v1.2.0)* | ❌ | ❌ | ❌ |
-| **Automation rules / schedules (read)** | ✅ | ✅ | ◑ read-only count + JSON *(v1.2.0)* | ❌ | ❌ | ❌ |
-| **Lighting schedule (read)** | ✅ | ✅ | ✅ read *(Gen1-only, v1.2.0)* | ❌ | ❌ | ❌ |
+| **Motion zones / privacy masks (read)** | ✅ | ✅ | ✅ read-only *(v1.2.0)* | ❌ | ❌ *(no visual editor yet)* | ❌ |
+| **Automation rules / schedules (read)** | ✅ | ✅ | ◑ read-only count + JSON *(v1.2.0)* | ❌ | ✅ full CRUD (list/add/edit/delete) | ❌ |
+| **Lighting schedule (read + write)** | ✅ read-only *(write regressed — tracked)* | ✅ read+write | ✅ read *(Gen1-only, v1.2.0)* | ❌ | ✅ read+write *(outdoor Eyes cameras)* | ❌ |
 | **Cloud clip download (history ~30 d)** | ✅ via Media Browser | ❌ | ❌ *(parked — no community request yet)* | ❌ *(intentionally not exposed — large payloads)* | ❌ *(use CLI)* | ◑ `clip_url` in event payload |
 | **Mini-NVR (motion-triggered local recording)** | ✅ *(v11.2.0 BETA)* | ✅ *(v10.7.0 BETA)* | ❌ | ❌ | ❌ | ❌ |
 | **SMB / NAS clip upload** | ✅ | ✅ *(v10.7.0 BETA)* | ❌ | ❌ | ❌ | ❌ |
-| **Camera sharing (friends)** | ✅ services (share / invite / list) | ✅ command | ◑ read-only list *(v1.2.0)* | ❌ *(intentionally not exposed — needs user-driven flow)* | ❌ | ❌ |
-| **Pan / tilt (360° Gen1)** | ✅ services | ✅ command | ✅ `pan_position` DP | ✅ `bosch_camera_pan` | ❌ *(Phase 2 stub)* | ❌ |
+| **Camera sharing (friends)** | ✅ services (share / invite / list) | ✅ command | ◑ read-only list *(v1.2.0)* | ❌ *(intentionally not exposed — needs user-driven flow)* | ✅ list/invite/remove/share/unshare | ❌ |
+| **Pan / tilt (360° Gen1)** | ✅ services | ✅ command | ✅ `pan_position` DP | ✅ `bosch_camera_pan` | ✅ slider wired to live API | ❌ |
 | **Named pan presets (home / left / right / back-left / back-right)** | ✅ opt-in select entity | ✅ `pan --preset` flag | ✅ `pan_preset` DP | ✅ `bosch_camera_pan preset=` | ❌ | ❌ |
 | **Two-way audio / intercom** | ❌ | ✅ command | ❌ | ❌ *(intentionally not exposed — timing-sensitive)* | ❌ | ❌ |
 | **Webhook delivery on events** | ✅ service + opt-in options | ✅ `watch --webhook URL` | ✅ via MQTT bridge | ❌ *(request-response model)* | ❌ | ❌ |
