@@ -135,6 +135,100 @@ class TestResolveStorageSecret:
         assert s1 != s2
 
 
+class TestResolveReconnectTimeout:
+    """``_resolve_reconnect_timeout`` — analog of the HA v14.0.0 hidden-tab PiP fix.
+
+    NiceGUI's stock ``reconnect_timeout`` default (3.0s) is far too tight for a
+    backgrounded/minimized tab watching a live camera in PiP — a timeout forces
+    the client-side JS to ``window.location.reload()`` (see
+    ``nicegui/static/nicegui.js`` ``connect_error`` handler), instantly killing
+    any live RTCPeerConnection / PiP ``<video>``. These tests pin the raised
+    default and the env-var override contract.
+    """
+
+    def test_env_var_absent_returns_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("BOSCH_FRONTEND_RECONNECT_TIMEOUT", raising=False)
+        app = _import_app()
+        result = app._resolve_reconnect_timeout()
+        assert result == app._DEFAULT_RECONNECT_TIMEOUT_SECONDS
+        # Must be well above NiceGUI's own 3.0s stock default — that's the bug.
+        assert result > 3.0
+
+    def test_env_var_set_returns_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("BOSCH_FRONTEND_RECONNECT_TIMEOUT", "42.5")
+        app = _import_app()
+        result = app._resolve_reconnect_timeout()
+        assert result == 42.5
+
+    def test_env_var_whitespace_stripped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("BOSCH_FRONTEND_RECONNECT_TIMEOUT", "  99  ")
+        app = _import_app()
+        result = app._resolve_reconnect_timeout()
+        assert result == 99.0
+
+    def test_env_var_empty_returns_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("BOSCH_FRONTEND_RECONNECT_TIMEOUT", "")
+        app = _import_app()
+        result = app._resolve_reconnect_timeout()
+        assert result == app._DEFAULT_RECONNECT_TIMEOUT_SECONDS
+
+    def test_env_var_non_numeric_returns_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("BOSCH_FRONTEND_RECONNECT_TIMEOUT", "garbage")
+        app = _import_app()
+        result = app._resolve_reconnect_timeout()
+        assert result == app._DEFAULT_RECONNECT_TIMEOUT_SECONDS
+
+    def test_env_var_zero_returns_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("BOSCH_FRONTEND_RECONNECT_TIMEOUT", "0")
+        app = _import_app()
+        result = app._resolve_reconnect_timeout()
+        assert result == app._DEFAULT_RECONNECT_TIMEOUT_SECONDS
+
+    def test_env_var_negative_returns_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("BOSCH_FRONTEND_RECONNECT_TIMEOUT", "-5")
+        app = _import_app()
+        result = app._resolve_reconnect_timeout()
+        assert result == app._DEFAULT_RECONNECT_TIMEOUT_SECONDS
+
+    def test_env_var_nan_returns_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``nan`` passes Python's bare ``float()`` parse and every comparison
+        against it (`<=`, `>`, `==`) is False — a naive `value <= 0` guard alone
+        would silently let it through and corrupt NiceGUI's derived
+        ping_interval/ping_timeout (`max(nan * 0.8, 4)` returns `nan`)."""
+        monkeypatch.setenv("BOSCH_FRONTEND_RECONNECT_TIMEOUT", "nan")
+        app = _import_app()
+        result = app._resolve_reconnect_timeout()
+        assert result == app._DEFAULT_RECONNECT_TIMEOUT_SECONDS
+
+    def test_env_var_infinity_returns_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``inf`` passes `float()` and `> 0` too — unrejected it would disable
+        dead-client reaping entirely (ping_interval/timeout both become inf)."""
+        monkeypatch.setenv("BOSCH_FRONTEND_RECONNECT_TIMEOUT", "inf")
+        app = _import_app()
+        result = app._resolve_reconnect_timeout()
+        assert result == app._DEFAULT_RECONNECT_TIMEOUT_SECONDS
+
+    def test_env_var_negative_infinity_returns_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("BOSCH_FRONTEND_RECONNECT_TIMEOUT", "-inf")
+        app = _import_app()
+        result = app._resolve_reconnect_timeout()
+        assert result == app._DEFAULT_RECONNECT_TIMEOUT_SECONDS
+
+
 # ---------------------------------------------------------------------------
 # _setup_cli_path
 # ---------------------------------------------------------------------------
@@ -424,6 +518,24 @@ class TestMain:
         fake_nicegui.ui.run = capture_run  # type: ignore[attr-defined]
         app_mod.main([])
         assert run_calls[0]["reload"] is False
+
+    def test_main_passes_reconnect_timeout_to_ui_run(
+        self, fake_nicegui: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """reconnect_timeout kwarg comes from _resolve_reconnect_timeout (HA v14.0.0 parity fix)."""
+        import bosch_camera_frontend.app as app_mod
+
+        self._patch_internals(monkeypatch)
+        monkeypatch.setenv("BOSCH_FRONTEND_RECONNECT_TIMEOUT", "77")
+
+        run_calls: list[dict[str, Any]] = []
+
+        def capture_run(**kwargs: Any) -> None:
+            run_calls.append(kwargs)
+
+        fake_nicegui.ui.run = capture_run  # type: ignore[attr-defined]
+        app_mod.main([])
+        assert run_calls[0]["reconnect_timeout"] == 77.0
 
     def test_main_calls_setup_cli_path(
         self, fake_nicegui: Any, monkeypatch: pytest.MonkeyPatch

@@ -10,12 +10,20 @@ Options:
     --host STR          Bind address               [default: 127.0.0.1]
     --cli-path PATH     Path to Python CLI repo    [default: BOSCH_CAMERA_CLI_PATH env / sibling dir]
     --reload            Enable NiceGUI hot-reload  (dev mode)
+
+Environment variables:
+    BOSCH_FRONTEND_RECONNECT_TIMEOUT
+        NiceGUI socket.io reconnect grace period in seconds
+        [default: 180.0 — NiceGUI's own stock default of 3.0s is too tight
+        for a backgrounded/minimized tab watching a live camera in PiP; see
+        ``_resolve_reconnect_timeout()`` for the full rationale]
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import math
 import os
 import secrets
 import sys
@@ -140,6 +148,73 @@ def _load_config_and_session(
     return cfg, token
 
 
+_DEFAULT_RECONNECT_TIMEOUT_SECONDS = 180.0
+
+
+def _resolve_reconnect_timeout() -> float:
+    """Return the NiceGUI socket.io ``reconnect_timeout`` (seconds).
+
+    NiceGUI defaults this to 3.0s (``nicegui.ui_run.run``). If the browser's
+    socket.io connection doesn't re-establish within that window, the SERVER
+    deletes the client and the browser's own JS forces a full
+    ``window.location.reload()`` (see ``nicegui/static/nicegui.js``,
+    ``connect_error`` handler on a "timeout"). That is the NiceGUI-equivalent
+    of the HA integration's v14.0.0 hidden-tab PiP bug (CHANGELOG "v14.0.0"
+    — HA's Lovelace panel resolver removed the panel, and with it the `
+    <video>` element, after 5 minutes hidden) — except worse here: a full page
+    navigation instantly kills any live RTCPeerConnection / PiP `<video>` on
+    ``camera_detail.py``, not just a DOM subtree.
+
+    A backgrounded/minimized browser tab is exactly the scenario where a
+    browser throttles or briefly freezes JS timers (mobile Safari
+    backgrounding, Chrome tab-freeze after ~5 min hidden) — trivially enough
+    to blow past a bare 3-second reconnect budget on an otherwise-healthy
+    connection, forcing a page reload while a user is watching a live camera
+    in Picture-in-Picture. Default raised well above NiceGUI's stock 3.0s so
+    normal background-tab throttling doesn't nuke the page; still bounded
+    (not indefinite) so a genuinely closed tab is reaped in reasonable time.
+
+    Side effect worth knowing (``nicegui.py``'s ``_startup()``): this value
+    also scales the underlying Socket.IO engine's heartbeat —
+    ``ping_interval = max(reconnect_timeout * 0.8, 4)``,
+    ``ping_timeout = max(reconnect_timeout * 0.4, 2)`` — so raising it also
+    slows down how fast the server notices a genuinely dead (not just
+    backgrounded) tab, and extends how long a disconnected client's queued
+    messages are retained (``ping_interval + ping_timeout +
+    reconnect_timeout``, see ``outbox.py``). Acceptable here: this app is a
+    single-user, typically-localhost camera viewer, not a multi-tenant
+    server under memory pressure from many stale sessions.
+
+    Override via ``BOSCH_FRONTEND_RECONNECT_TIMEOUT`` (seconds) for local
+    tuning/tests.
+    """
+    raw = os.environ.get("BOSCH_FRONTEND_RECONNECT_TIMEOUT", "").strip()
+    if not raw:
+        return _DEFAULT_RECONNECT_TIMEOUT_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "BOSCH_FRONTEND_RECONNECT_TIMEOUT=%r is not a number — using default %.1fs",
+            raw,
+            _DEFAULT_RECONNECT_TIMEOUT_SECONDS,
+        )
+        return _DEFAULT_RECONNECT_TIMEOUT_SECONDS
+    # `<= 0` alone is not a sufficient guard: every comparison against `nan`
+    # is False, so "nan" would silently slip through and corrupt NiceGUI's
+    # derived ping_interval/ping_timeout (`max(nan * 0.8, 4)` returns `nan`
+    # in Python's max()). "inf" passes `> 0` too, silently disabling dead-
+    # client reaping entirely. Reject both explicitly via math.isfinite.
+    if not math.isfinite(value) or value <= 0:
+        logger.warning(
+            "BOSCH_FRONTEND_RECONNECT_TIMEOUT=%r must be a finite number > 0 — using default %.1fs",
+            raw,
+            _DEFAULT_RECONNECT_TIMEOUT_SECONDS,
+        )
+        return _DEFAULT_RECONNECT_TIMEOUT_SECONDS
+    return value
+
+
 def _console_banner_html(version: str) -> str:
     """Return the ``<script>`` snippet that prints the Bosch styled version banner.
 
@@ -246,6 +321,7 @@ def main(argv: list[str] | None = None) -> None:
         reload=args.reload,
         show=False,  # Don't auto-open browser (headless-friendly)
         storage_secret=_resolve_storage_secret(),
+        reconnect_timeout=_resolve_reconnect_timeout(),
     )
 
 
