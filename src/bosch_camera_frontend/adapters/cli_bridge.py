@@ -142,8 +142,8 @@ def get_cameras(cfg: ConfigDict, session: "requests.Session") -> dict[str, Camer
     """Always live from /v11/video_inputs — the cloud is authoritative for
     names/firmware/mac. Pre-2026-05-24 we returned cfg["cameras"] which hid
     cloud-side renames and any cameras added since the last `rescan`.
-    Local-only fields (local_ip / creds / download_folder) are preserved
-    across refresh, keyed by camera id.
+    Local-only fields (local_ip / creds / download_folder / nvr_recording_*)
+    are preserved across refresh, keyed by camera id.
     """
     bc = _bc()
     cached: dict[str, CameraDict] = cfg.get("cameras", {}) or {}
@@ -169,6 +169,8 @@ def get_cameras(cfg: ConfigDict, session: "requests.Session") -> dict[str, Camer
                 "local_password": prev.get("local_password", ""),
                 "has_light": prev.get("has_light", False),
                 "pan_limit": prev.get("pan_limit", 0),
+                "nvr_recording_folder": prev.get("nvr_recording_folder", ""),
+                "nvr_recording_enabled": prev.get("nvr_recording_enabled", False),
             }
         cfg["cameras"] = fresh
         return fresh

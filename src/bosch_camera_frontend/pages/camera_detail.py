@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import datetime
+import os
 import re
 from typing import Any
 from urllib.parse import unquote
@@ -25,6 +26,7 @@ from nicegui import app, ui
 
 from bosch_camera_frontend.adapters import cli_bridge
 from bosch_camera_frontend.adapters.go2rtc_manager import get_manager
+from bosch_camera_frontend.adapters.nvr_manager import get_manager as get_nvr_manager
 from bosch_camera_frontend.adapters.stream_session import StreamSession
 from bosch_camera_frontend.components.live_player import LivePlayer
 from bosch_camera_frontend.components.live_snapshot_player import LiveSnapshotPlayer
@@ -655,6 +657,100 @@ async def camera_detail_page(name: str) -> None:
 
             recording_switch.on_value_change(_toggle_recording)
             ui.timer(0.2, _load_recording, once=True)
+
+        # ── Local NVR Recording (Beta, continuous mode only) ────────────────
+        # Phase 1 of a Mini-NVR port (see nvr_manager.py docstring) — one
+        # long-running ffmpeg segmenter per camera writing rolling MP4s to
+        # disk. Purely local/process-scoped: unlike the "Cloud Recording"
+        # toggle above, nothing here calls the Bosch API. Recording is NOT
+        # tied to this page being open (no app.on_disconnect teardown) —
+        # closing the tab must not stop an in-progress local recording.
+        # event_buffered (motion/person-triggered clips) is intentionally
+        # NOT implemented — this frontend has no event/FCM consumer yet.
+        with ui.card().classes("w-full p-4"):
+            ui.label("Local Recording (Beta)").classes("font-semibold mb-2")
+            nvr_state_label = ui.label("Loading…").classes("text-sm")
+
+            default_nvr_folder = cam_info.get("nvr_recording_folder") or os.path.join(
+                "captures", cam_name, "nvr"
+            )
+            nvr_folder_input = ui.input(
+                "Recording folder", value=default_nvr_folder
+            ).classes("w-full")
+            nvr_switch = ui.switch("Continuous Recording")
+            ui.label(
+                "Continuous mode: rolling 5-min MP4 segments (H.264 copy, no "
+                "transcode) written straight to the folder above while ON. "
+                "Requires ffmpeg. Event-triggered clips (motion/person) are "
+                "not implemented yet."
+            ).classes("text-xs text-gray-400 mt-1")
+
+            _nvr_stream_name = _stream_name(cam_name, cam_id)
+            # Guard against the SAME programmatic-set_value() -> unwanted-write
+            # bug the "Cloud Recording" section above already had to fix
+            # (bug-hunt finding 2026-07-11): NiceGUI's ValueElement fires
+            # on_value_change for ANY change regardless of source, so
+            # _load_nvr_state's own set_value(is_rec) below would otherwise
+            # re-fire _toggle_nvr and spuriously re-start/persist a recording
+            # that's already running every time this page is (re)opened.
+            _nvr_suppress_next = False
+
+            def _nvr_resolver() -> dict[str, Any] | None:
+                # SYNC on purpose — runs on the NVRManager watcher thread, not
+                # the event loop (see nvr_manager.StreamResolver contract).
+                return cli_bridge.get_stream_url(cam_info, token, hq=False, cfg=cfg)
+
+            async def _load_nvr_state() -> None:
+                nonlocal _nvr_suppress_next
+                mgr = get_nvr_manager()
+                if not mgr.available:
+                    nvr_state_label.set_text(
+                        "Local Recording: ffmpeg not installed "
+                        "(brew install ffmpeg / apt-get install ffmpeg)"
+                    )
+                    nvr_switch.disable()
+                    return
+                is_rec = mgr.is_recording(_nvr_stream_name)
+                _nvr_suppress_next = True
+                nvr_switch.set_value(is_rec)
+                nvr_state_label.set_text(
+                    f"Local Recording: {'ON 🔴' if is_rec else 'OFF'}"
+                )
+
+            async def _toggle_nvr(e: Any) -> None:
+                nonlocal _nvr_suppress_next
+                if _nvr_suppress_next:
+                    _nvr_suppress_next = False
+                    return
+                mgr = get_nvr_manager()
+                folder = nvr_folder_input.value or default_nvr_folder
+                cam_info["nvr_recording_folder"] = folder
+                cam_info["nvr_recording_enabled"] = bool(e.value)
+                try:
+                    cli_bridge.save_config(cfg)
+                except Exception:
+                    pass  # persistence is best-effort; toggle still applies live
+
+                if e.value:
+                    ok = await mgr.async_start_recording(
+                        _nvr_stream_name, _nvr_resolver, folder
+                    )
+                    if ok:
+                        nvr_state_label.set_text(f"Local Recording: ON 🔴 ({folder})")
+                        ui.notify("Local recording started", color="info")
+                    else:
+                        nvr_switch.set_value(False)
+                        nvr_state_label.set_text(
+                            "Local Recording: failed to start (ffmpeg missing?)"
+                        )
+                        ui.notify("Local recording failed to start", color="negative")
+                else:
+                    await mgr.async_stop_recording(_nvr_stream_name)
+                    nvr_state_label.set_text("Local Recording: OFF")
+                    ui.notify("Local recording stopped", color="info")
+
+            nvr_switch.on_value_change(_toggle_nvr)
+            ui.timer(0.2, _load_nvr_state, once=True)
 
         # ── Siren / Alarm (Gen2 Indoor II only) ─────────────────────────────
         if cam_info.get("model") == "HOME_Eyes_Indoor":

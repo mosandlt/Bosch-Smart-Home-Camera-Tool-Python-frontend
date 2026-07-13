@@ -222,6 +222,44 @@ def fake_nicegui() -> Any:
             sys.modules[k] = v
 
 
+@pytest.fixture(autouse=True)
+def _no_real_nvr_ffmpeg_spawns(
+    fake_nicegui: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Safety net: NVRManager must never spawn a REAL ffmpeg process (or even
+    a watcher thread) from the GENERAL test suite, regardless of whether
+    ffmpeg happens to be on this machine's PATH (it is, on this devbox).
+    Patches ``_resolve_binary`` to report "unavailable" so
+    ``NVRManager.start_recording`` returns False before ever creating a
+    ``_CameraRecorder``/thread — generic camera_detail tests that fire every
+    captured switch (including the NVR "Continuous Recording" toggle) stay
+    subprocess- and thread-free.
+
+    IMPORTANT ordering note (bug found 2026-07-13 by an adversarial bug-hunt
+    agent, confirmed empirically): this fixture MUST depend on ``fake_nicegui``
+    (declared as a parameter, not just used incidentally) because
+    ``fake_nicegui`` purges every ``bosch_camera_frontend*`` module from
+    ``sys.modules`` and forces a fresh import. Autouse fixtures are resolved
+    before explicitly-requested ones of the same scope by default, so WITHOUT
+    this explicit dependency, ``NVRManager`` would be imported/patched here
+    BEFORE ``fake_nicegui`` deletes and reimports it — patching a class
+    object that then gets discarded, leaving the real (unpatched) class in
+    place for every camera_detail test. Declaring ``fake_nicegui`` as a
+    parameter forces pytest to resolve it first regardless of autouse status.
+
+    Skipped for ``test_nvr_manager.py`` itself, which exercises the real
+    availability/spawn logic (including ``_resolve_binary``) directly and
+    patches it explicitly, per-case, inside its own narrower ``with`` blocks.
+    """
+    if request.node.fspath.basename == "test_nvr_manager.py":
+        return
+    try:
+        from bosch_camera_frontend.adapters.nvr_manager import NVRManager
+    except ImportError:
+        return  # frontend package not on the path for this test run
+    monkeypatch.setattr(NVRManager, "_resolve_binary", lambda self: None)
+
+
 @pytest.fixture
 def fake_camera() -> dict[str, Any]:
     """A single fake camera dict — FAKE IDs only, never real device values."""
