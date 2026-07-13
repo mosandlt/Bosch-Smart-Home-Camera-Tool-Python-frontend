@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.4.0-alpha — local continuous recording (NVR Phase 1) + PiP background-tab survival fix
+
+Two changes bundled into one minor release.
+
+- **Local continuous recording (NVR Phase 1)**: new `NVRManager`
+  (`adapters/nvr_manager.py`), a singleton mirroring `go2rtc_manager.py`'s
+  pattern — per camera, a long-lived ffmpeg `-f segment` process records the
+  LAN RTSPS stream into a configurable folder. On crash the watcher
+  re-resolves a fresh stream URL (LOCAL digest creds rotate on every
+  `PUT /connection`) and respawns with backoff, but never restarts
+  proactively just because creds rotated elsewhere. New "Local Recording
+  (Beta)" card on the camera detail page (folder input + continuous-recording
+  switch), following the existing Privacy/Cloud-Recording toggle conventions
+  including the suppress-guard against spurious re-triggers on page load.
+  `event_buffered` (ring-buffer + motion postroll, mirroring the HA
+  integration's richer Mini-NVR) is explicitly out of scope — documented as a
+  TODO in `nvr_manager.py` rather than half-built. THREE_PER_ISSUE_PER_CHANGE
+  bug-hunt found and fixed 4 real issues: a `stop()`-vs-in-flight-spawn race
+  that could leak an orphaned ffmpeg process, an unguarded `AttributeError`
+  crash when the stream-URL resolver returns a truthy non-dict, a missing
+  suppress-guard on the new NVR toggle causing spurious re-persists on page
+  load, and a test-fixture ordering bug that made a safety-net mock pass by
+  accident rather than by correctly patching the real singleton.
+- **PiP background-tab survival fix**: analogous to the HA integration's
+  v14.0.0 PiP-survival fix, but worse here — NiceGUI's default
+  `reconnect_timeout` (3.0s) derives a socket.io ping window that a
+  backgrounded/throttled tab (mobile Safari, Chrome tab-freeze) can easily
+  miss; when that happens the client JS calls `window.location.reload()`, a
+  full page reload that destroys the RTCPeerConnection and any active PiP
+  `<video>` outright. New `_resolve_reconnect_timeout()` (default 180.0s,
+  overridable via `BOSCH_FRONTEND_RECONNECT_TIMEOUT`) wired into `ui.run()`.
+  THREE_PER_ISSUE_PER_CHANGE bug-hunt found one real issue: the initial
+  `value <= 0` validation didn't reject non-finite floats (`nan`/`inf`),
+  fixed with `math.isfinite()`.
+
+571 pytest, 99.28% coverage (repo threshold 98%), mypy --strict / ruff /
+ruff format / codespell / pip-audit clean.
+
 ## 0.3.0-alpha — family-parity batch: sound detection, wifi, lighting schedule, recording, siren, pan, rules, friends
 
 Second family-parity wiring pass (docs/family-parity-plan.md §2b), following
