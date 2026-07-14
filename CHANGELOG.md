@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1-alpha — docs-only release
+
+Refreshed the sibling-repo version table in README's Integration Comparison
+section (was several releases stale across the 6-repo family). No functional
+or dependency changes.
+
 ## 0.4.0-alpha — local continuous recording (NVR Phase 1) + PiP background-tab survival fix
 
 Two changes bundled into one minor release.
