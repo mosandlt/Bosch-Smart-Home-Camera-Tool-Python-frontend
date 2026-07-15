@@ -4,11 +4,11 @@
 > Replaces the official iOS/Android app with a browser-based interface.
 
 > **Alpha — on PyPI:** `pip install bosch-camera-frontend` (self-contained, pulls the CLI). See [Installation](#installation).
-> Current release: **v0.4.0-alpha** · Phase 1 working end-to-end (dashboard, camera detail, settings). Phase 2 **live video has landed**: a snapshot-tier near-live view plus an optional real **WebRTC/HLS player** (via go2rtc) with audio, Picture-in-Picture (now survives a backgrounded tab) and fullscreen — plus a growing set of Phase 4 device-control cards (pan, sound detection, WiFi, lighting schedule, recording, siren, rules, friends/sharing) and a new local continuous-recording (Mini-NVR Phase 1, Beta) card. Phase 3 (FCM push events + in-app auth) is next.
+> Current release: **v0.4.1-alpha** · Phase 1 working end-to-end (dashboard, camera detail, settings). Phase 2 **live video has landed**: a snapshot-tier near-live view plus an optional real **WebRTC/HLS player** (via go2rtc) with audio, Picture-in-Picture (survives a backgrounded tab) and fullscreen — plus a broad set of Phase 4 device-control cards (pan, motion/intrusion/sound detection, WiFi, lighting schedule, cloud recording, siren, automation rules, friends/sharing) and a local continuous-recording (Mini-NVR Phase 1, Beta) card. Phase 3 (FCM push events + in-app auth) is next.
 
-> **Status:** Live cloud camera-list (no longer hostage to a stale local config), HA/Apple-style design (rounded-2xl cards, 16:9 hero snapshot, soft shadows, translucent header), structured privacy-toggle error reporting ("Camera offline" / "Auth expired" instead of "check token"), in-app Reload-from-disk button on Settings (after running `python3 bosch_camera.py token fix` in a terminal). The camera-detail Live Stream section now plays real WebRTC when [go2rtc](https://github.com/AlexxIT/go2rtc) is installed and falls back to a ~5 s snapshot loop otherwise.
+> **Status:** Live cloud camera-list (no longer hostage to a stale local config), HA/Apple-style design (rounded-2xl cards, 16:9 hero snapshot, soft shadows, translucent header), structured privacy-toggle error reporting ("Camera offline" / "Auth expired" instead of "check token"), in-app Reload-from-disk button on Settings (after running `python3 bosch_camera.py token fix` in a terminal). The camera-detail Live Stream section now plays real WebRTC when [go2rtc](https://github.com/AlexxIT/go2rtc) is installed and falls back to a ~5 s snapshot loop otherwise. **Note:** the WebRTC/HLS live-player code path is implemented and unit-tested but not yet confirmed against a live go2rtc + real camera + browser session — see the Roadmap's open Phase 2 item.
 >
-> **Engineering:** runs on **NiceGUI 3.12** · cloud I/O is non-blocking (`asyncio.to_thread`) so the UI never freezes during network calls · the rtsps URL (with embedded creds) stays server-side — the browser only ever gets the go2rtc base URL + stream name · session secret is generated, never hardcoded · `mypy --strict` clean · **99% test coverage** · CI on Python 3.11–3.13 (`ruff` + `ruff format` + `mypy --strict` + `pytest`).
+> **Engineering:** runs on **NiceGUI 3.12** · cloud I/O is non-blocking (`asyncio.to_thread`) so the UI never freezes during network calls · the rtsps URL (with embedded creds) stays server-side — the browser only ever gets the go2rtc base URL + stream name · session secret is generated, never hardcoded · `mypy --strict` clean · **~99% test coverage** (571 tests as of v0.4.0-alpha) · CI on Python 3.11–3.13 (`ruff` + `ruff format` + `mypy --strict` + `pytest`).
 >
 > **Interested? Let me know!** Open an [issue](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend/issues) or start a [discussion](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python-frontend/discussions). Feature requests, ideas, and pull requests are welcome.
 
@@ -106,6 +106,7 @@ Bosch-Smart-Home-Camera-Tool-Python-frontend/
       cli_bridge.py        — typed re-export of bosch_camera.py + async_* twins
       go2rtc_manager.py    — shared go2rtc subprocess (spawn, REST add/remove stream)
       stream_session.py    — keeps a go2rtc registration fresh vs Gen2 cred rotation
+      nvr_manager.py       — local continuous-recording ffmpeg process per camera (Mini-NVR Phase 1, Beta)
     pages/
       dashboard.py         — camera overview grid
       camera_detail.py     — single-camera view (snapshot, live stream, controls, events)
@@ -159,6 +160,21 @@ expiry; go2rtc swaps the source in place and the player rides the brief blip.
 > **TLS note:** the underlying Python CLI verifies Bosch cloud TLS using a pinned
 > Bosch CA certificate (since CLI v10.10.2). The `rtspx://` rewrite only skips
 > go2rtc's *RTSP-client* hostname check on the already-authenticated media hop.
+
+---
+
+## Supported Cameras
+
+Same camera lineup as the rest of the Bosch Smart Home Camera Tool family — exactly four models:
+
+| Model | Generation | Notes |
+|---|---|---|
+| Eyes Outdoor (SVO-1601-220) | Gen1 | outdoor, spotlight |
+| 360° Indoor (SVI-1609-5) | Gen1 | indoor, pan |
+| Eyes Outdoor II | Gen2 | outdoor, RGB wallwasher |
+| Eyes Indoor II | Gen2 | indoor, siren |
+
+Which controls appear on the camera-detail page (pan slider, siren, sound detection, RGB wallwasher, etc.) is derived from the camera's own reported model/generation and feature flags — cards for unsupported features are hidden rather than shown disabled.
 
 ---
 
@@ -272,6 +288,7 @@ Mapped from iOS app v2.11.2. Phase 1 shipped in v0.1.1-alpha; the live-video cor
 - [x] Siren trigger button + duration (Gen2 Indoor II only, `async_trigger_siren` / `async_get/set_alarm_settings`)
 - [x] Automation rules editor (list/add/delete, `async_list/add/edit/delete_rule`, `GET`/`POST`/`PUT`/`DELETE .../rules`)
 - [x] Camera sharing management (friends: list/invite/remove/share/unshare, `async_*_friend`/`async_*share_camera`, `GET`/`POST`/`DELETE`/`PUT /v11/friends*`)
+- [x] Local continuous recording (Mini-NVR Phase 1, Beta): per-camera ffmpeg segment recorder (`NVRManager`), folder input + on/off switch on the camera detail page — `event_buffered` (ring-buffer preroll + motion postroll) is explicitly out of scope for Phase 1
 - [ ] Notifications toggle wired to live API (currently a stub)
 - [ ] Auto-follow toggle
 - [ ] Audio alarm threshold slider
@@ -295,8 +312,9 @@ Mapped from iOS app v2.11.2. Phase 1 shipped in v0.1.1-alpha; the live-video cor
 - [ ] Ambient light sensor value
 - [ ] Multi-camera grid view
 - [ ] Zones / privacy-masks editor (read+write UI) — needs a new canvas/SVG overlay component, no reusable drawing primitive exists in this codebase yet
-- [ ] NVR / recording status display — local-disk clip browse/prune is a different feature from the cloud `recording_options` sound toggle above (which IS wired); not ported (no local recording pipeline in this frontend)
-- [ ] Diagnostics display (RCP/ONVIF/feature flags/maintenance) — `cli_bridge.get_feature_flags` exists (list-normalized) but has no UI card yet
+- [ ] Mini-NVR event-buffered mode (ring-buffer preroll + motion postroll) — Phase 1 shipped continuous-only recording; event-buffered mode is a distinct, larger feature (see the HA integration's richer implementation) and is tracked separately
+- [ ] NVR local-disk clip browse/prune UI — recordings are written to the configured folder but there's no in-app browser for them yet
+- [ ] Diagnostics display (RCP/feature flags/maintenance) — `cli_bridge.get_feature_flags` exists (list-normalized) but has no UI card yet
 
 ### Phase 5 — Polish
 
@@ -366,8 +384,13 @@ How this tool compares to the rest of the Bosch Smart Home Camera ecosystem (Hom
 
 ## Related Projects
 
-- [Bosch Smart Home Camera — Python CLI Tool](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python) — standalone CLI with full API access, live stream, RCP protocol, FCM push
+- [Bosch Smart Home Camera — Python CLI Tool](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-Python) — standalone CLI with full API access, live stream, RCP protocol, FCM push. This frontend is a thin NiceGUI layer over it (see [Architecture](#architecture)) and depends on it as a PyPI package.
 - [Bosch Smart Home Camera — Home Assistant Integration](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-HomeAssistant) — custom HA integration with live video, sensors, switches, alerts
+- [Bosch Smart Home Camera — ioBroker Adapter](https://github.com/mosandlt/ioBroker.bosch-smart-home-camera) — ioBroker adapter with vis-2 widgets
+- [Bosch Smart Home Camera — MCP Server](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-MCP) — Model Context Protocol server for LLM clients (Claude Desktop, Claude Code, etc.)
+- [Bosch Smart Home Camera — Node-RED Nodes](https://github.com/mosandlt/Bosch-Smart-Home-Camera-Tool-NodeRED) — Node-RED palette for flow-based automation
+
+See the [Integration Comparison](#integration-comparison) table below for a full feature-by-feature breakdown across all six projects.
 
 ## References
 
