@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2-alpha — docs-only release
+
+Fixed the MCP row in the shared Integration Comparison table (shares the
+Python CLI's `bosch_config.json` rather than its own OAuth2 PKCE flow) and
+a broader README accuracy pass (version bump, NVR/local-recording docs,
+supported cameras, sibling links). No functional or dependency changes.
+
 ## 0.4.1-alpha — docs-only release
 
 Refreshed the sibling-repo version table in README's Integration Comparison
