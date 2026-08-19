@@ -289,10 +289,12 @@ Mapped from iOS app v2.11.2. Phase 1 shipped in v0.1.1-alpha; the live-video cor
 - [x] Automation rules editor (list/add/delete, `async_list/add/edit/delete_rule`, `GET`/`POST`/`PUT`/`DELETE .../rules`)
 - [x] Camera sharing management (friends: list/invite/remove/share/unshare, `async_*_friend`/`async_*share_camera`, `GET`/`POST`/`DELETE`/`PUT /v11/friends*`)
 - [x] Local continuous recording (Mini-NVR Phase 1, Beta): per-camera ffmpeg segment recorder (`NVRManager`), folder input + on/off switch on the camera detail page — `event_buffered` (ring-buffer preroll + motion postroll) is explicitly out of scope for Phase 1
+- [x] Local recordings browser: list/play/delete the MP4 segments the Mini-NVR writes to disk (`list_segments`/`delete_segment`, served in-browser via a one-time `app.add_static_files` mount per recording folder) — cloud clip download/delete stays out of scope (see Phase 3 note)
+- [x] Firmware status display + confirm-gated install button (`async_get_firmware_status`/`async_install_firmware`, `GET`/`PUT .../firmware` — same endpoint the official Bosch app's "Update now" uses; install reboots the camera ~3-7 min)
+- [x] Video quality select (auto/high/low) on the live view — `high` maps to the CLI bridge's `hq=True` (main stream, inst=1); `auto`/`low` both currently resolve to the balanced sub-stream (inst=2) since the CLI bridge has no inst=4 low-bandwidth tier yet (unlike the HA integration's RCP-based `quality_prefs.py`)
 - [ ] Notifications toggle wired to live API (currently a stub)
 - [ ] Auto-follow toggle
 - [ ] Audio alarm threshold slider
-- [ ] Video quality select (auto/high/low)
 - [ ] Live runtime verification on real hardware (go2rtc + camera + browser)
 
 ### Phase 3 — Events, Auth & Real-Time
@@ -300,9 +302,8 @@ Mapped from iOS app v2.11.2. Phase 1 shipped in v0.1.1-alpha; the live-video cor
 - [ ] FCM push listener background task (reuse CLI `_watch_fcm_push`)
 - [ ] Real-time event feed in camera detail via NiceGUI WebSocket
 - [ ] HTTP Basic Auth middleware (env-var password)
-- [ ] Event detail view: snapshot + clip download
-- [ ] Clip re-request button (POST /clip_request)
-- [ ] Mark as read / favorite
+- [ ] Event detail view: snapshot + clip download — cloud clip download/delete is intentionally out of scope (see [Roadmap](#roadmap) → Phase 4 note and CLAUDE.md)
+- [ ] Mark as read / favorite — no dedicated CLI-side function exists yet for a single-event mark-read/delete against the cloud API (only `api_mark_events_read`'s internal bulk helper, not exposed as a public command)
 - [ ] Event type filter (MOVEMENT, PERSON, AUDIO_ALARM, etc.)
 
 ### Phase 4 — Advanced Features
@@ -313,8 +314,9 @@ Mapped from iOS app v2.11.2. Phase 1 shipped in v0.1.1-alpha; the live-video cor
 - [ ] Multi-camera grid view
 - [ ] Zones / privacy-masks editor (read+write UI) — needs a new canvas/SVG overlay component, no reusable drawing primitive exists in this codebase yet
 - [ ] Mini-NVR event-buffered mode (ring-buffer preroll + motion postroll) — Phase 1 shipped continuous-only recording; event-buffered mode is a distinct, larger feature (see the HA integration's richer implementation) and is tracked separately
-- [ ] NVR local-disk clip browse/prune UI — recordings are written to the configured folder but there's no in-app browser for them yet
+- [x] NVR local-disk clip browse/prune UI — Recordings browser (list/play/delete) on the camera detail page
 - [ ] Diagnostics display (RCP/feature flags/maintenance) — `cli_bridge.get_feature_flags` exists (list-normalized) but has no UI card yet
+- [ ] AI Camera Analysis read-only display — parked; the HA sibling repo's `ai_alert_store.py` persistence is HA-entity/HA-storage specific (per-camera AI alert history keyed to HA's own `.storage`), no portable read surface for a standalone frontend to poll without duplicating HA-internal storage-format assumptions
 
 ### Phase 5 — Polish
 
@@ -356,7 +358,7 @@ How this tool compares to the rest of the Bosch Smart Home Camera ecosystem (Hom
 | **Front spotlight (Gen1/Gen2)** | ✅ light entity | ✅ command | ✅ DP | ✅ `bosch_camera_light_set` (LAN-fallback) | ❌ *(Phase 2 stub)* | ✅ `bosch-camera-light` node *(v0.3.0-alpha)* |
 | **RGB wallwasher (Gen2 Outdoor II)** | ✅ light w/ RGB | ◑ on/off only — no RGB | ✅ color + brightness DPs | ❌ *(on/off only — RGB not exposed)* | ❌ | ◑ on/off + intensity only — no RGB *(v0.3.0-alpha)* |
 | **Panic-alarm siren** | ✅ button entity *(Gen2 Indoor II)* | ✅ command *(Gen2 Indoor II only)* | ✅ DP | ✅ `bosch_camera_siren_trigger` *(Gen2 Indoor II only)* | ✅ trigger + duration *(Gen2 Indoor II only)* | ❌ |
-| **Firmware update** | ✅ Update-Entity + Repairs fix-flow, install button *(v14.4.10)* | ✅ status + install *(v10.11.0)* | ✅ firmware states + install trigger, write-lock guard *(v1.8.0)* | ✅ status + install tools *(v1.7.0)* | ◑ read-only status display, no install action | ✅ status + install nodes *(v0.4.0-alpha)* |
+| **Firmware update** | ✅ Update-Entity + Repairs fix-flow, install button *(v14.4.10)* | ✅ status + install *(v10.11.0)* | ✅ firmware states + install trigger, write-lock guard *(v1.8.0)* | ✅ status + install tools *(v1.7.0)* | ✅ status display + confirm-gated install button | ✅ status + install nodes *(v0.4.0-alpha)* |
 | **Image rotation 180°** | ✅ switch | ❌ | ✅ DP | ❌ | ❌ | ❌ |
 | **Motion / person / audio events** | ✅ FCM push + polling fallback | ◑ `watch` command only (events cmd removed) | ✅ FCM push + polling fallback | ✅ `bosch_camera_events` (on-demand pull) | ◑ pull-only events table | ✅ `event` node (poll) |
 | **Motion edge-trigger state** | ✅ `binary_sensor.motion` | n/a | ✅ `motion_active` DP *(v0.5.3)* | n/a *(request-response, no subscription)* | ❌ | ❌ |
@@ -366,7 +368,7 @@ How this tool compares to the rest of the Bosch Smart Home Camera ecosystem (Hom
 | **Automation rules / schedules** | ✅ read + write | ✅ read + write | ✅ full CRUD *(v1.8.0)* | ✅ list / add / edit / delete *(v1.7.0)* | ✅ full CRUD (list/add/edit/delete) | ❌ |
 | **Lighting schedule** | ✅ read (write via service, Gen1 Eyes Outdoor only) | ✅ read + write | ✅ read *(Gen1-only, v1.2.0)* | ✅ get / set *(v1.7.0)* | ✅ read + write *(outdoor Eyes cameras)* | ❌ |
 | **Cloud clip download (history ~30 d)** | ✅ via Media Browser | ❌ | ❌ *(parked — no community request yet)* | ❌ *(intentionally not exposed — large payloads)* | ❌ *(use CLI)* | ◑ `clip_url` in event payload |
-| **Mini-NVR (local recording)** | ✅ continuous + event-buffered, ring-buffer preroll *(v11.2.0 BETA → v14.7.0 modes)* | ◑ event-triggered segment muxing, no preroll ring *(v10.7.0 BETA)* | ❌ *(delegates to external recorder via credential-free RTSP endpoint)* | ❌ *(no NVR concept)* | ◑ continuous only, no event-buffered *(v0.4.0-alpha)* | ◑ continuous only via `bosch-camera-nvr-record` node *(v0.4.0-alpha)* |
+| **Mini-NVR (local recording)** | ✅ continuous + event-buffered, ring-buffer preroll *(v11.2.0 BETA → v14.7.0 modes)* | ◑ event-triggered segment muxing, no preroll ring *(v10.7.0 BETA)* | ❌ *(delegates to external recorder via credential-free RTSP endpoint)* | ❌ *(no NVR concept)* | ◑ continuous only, no event-buffered — recordings browser (list/play/delete) *(v0.4.0-alpha)* | ◑ continuous only via `bosch-camera-nvr-record` node *(v0.4.0-alpha)* |
 | **SMB / NAS clip upload** | ✅ | ✅ *(v10.7.0 BETA)* | ❌ | ❌ | ❌ | ❌ |
 | **Camera sharing (friends)** | ✅ services (share / invite / list) | ✅ command | ✅ share / invite / remove *(Gen2 only, v1.8.0)* | ✅ list / invite / share / unshare / remove *(v1.7.0)* | ✅ list/invite/remove/share/unshare | ❌ |
 | **Pan / tilt (360° Gen1)** | ✅ services | ✅ command | ✅ `pan_position` DP | ✅ `bosch_camera_pan` | ✅ slider wired to live API | ❌ |

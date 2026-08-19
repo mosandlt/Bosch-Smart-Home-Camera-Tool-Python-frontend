@@ -926,6 +926,51 @@ def unshare_camera(
     return False, _map_write_error(r)
 
 
+def get_firmware_status(
+    session: "requests.Session", cam_id: str
+) -> dict[str, Any] | None:
+    """GET firmware status ({current, upToDate, updating, update}). None on error.
+
+    API: GET /v11/video_inputs/{id}/firmware. HTTP 442 = unsupported model,
+    HTTP 444 = camera offline. Mirrors ``cmd_firmware_update``'s GET.
+    """
+    bc = _bc()
+    r = session.get(f"{bc.CLOUD_API}/v11/video_inputs/{cam_id}/firmware", timeout=10)
+    if r.status_code != 200:
+        return None
+    return cast("dict[str, Any]", r.json())
+
+
+def install_firmware(
+    session: "requests.Session", cam_id: str
+) -> tuple[bool, str | None]:
+    """Install the pending firmware update for one camera. Returns (ok, error_reason).
+
+    Read-modify-write on /firmware: re-fetches the current status first so a
+    stale "update" target from an earlier page load can't be replayed, then
+    PUTs {"id": update_target}. Same endpoint the official Bosch app's
+    "Update now" button uses. Mirrors ``cmd_firmware_update install``.
+    Installing reboots the camera for roughly 3-7 minutes.
+    """
+    bc = _bc()
+    fw = get_firmware_status(session, cam_id)
+    if fw is None:
+        return False, "Firmware status unavailable"
+    if fw.get("updating"):
+        return False, "Install already in progress"
+    update_target = fw.get("update")
+    if not update_target:
+        return False, "Already up to date — nothing to install"
+    r = session.put(
+        f"{bc.CLOUD_API}/v11/video_inputs/{cam_id}/firmware",
+        json={"id": update_target},
+        timeout=10,
+    )
+    if r.status_code in (200, 201, 204):
+        return True, None
+    return False, _map_write_error(r)
+
+
 # ---------------------------------------------------------------------------
 # Async twins — run the blocking call above in a worker thread.
 # Use these from `async def` NiceGUI handlers so the event loop stays free.
@@ -1015,6 +1060,18 @@ async def async_get_unread_count(
     session: "requests.Session", cam_id: str
 ) -> int | None:
     return await _to_thread(get_unread_count, session, cam_id)
+
+
+async def async_get_firmware_status(
+    session: "requests.Session", cam_id: str
+) -> dict[str, Any] | None:
+    return await _to_thread(get_firmware_status, session, cam_id)
+
+
+async def async_install_firmware(
+    session: "requests.Session", cam_id: str
+) -> tuple[bool, str | None]:
+    return await _to_thread(install_firmware, session, cam_id)
 
 
 async def async_get_motion_detection(

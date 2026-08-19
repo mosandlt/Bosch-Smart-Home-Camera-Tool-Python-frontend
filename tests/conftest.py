@@ -162,6 +162,8 @@ def build_fake_nicegui() -> types.ModuleType:
         "spinner",
         "link",
         "markdown",
+        "video",
+        "dialog",
     ):
         setattr(ui, name, _factory)
 
@@ -181,6 +183,7 @@ def build_fake_nicegui() -> types.ModuleType:
     app.on_shutdown = _passthrough_decorator
     app.on_connect = _passthrough_decorator
     app.on_disconnect = _passthrough_decorator
+    app.add_static_files = _factory
     ng.app = app
 
     return ng

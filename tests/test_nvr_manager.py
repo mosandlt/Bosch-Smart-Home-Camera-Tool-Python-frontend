@@ -507,3 +507,74 @@ def _reset_singleton() -> Any:
     nm._manager = None
     yield
     nm._manager = None
+
+
+# ---------------------------------------------------------------------------
+# Recordings browser (list/delete local segments) — feature-parity wiring.
+# ---------------------------------------------------------------------------
+
+
+class TestListSegments:
+    def test_missing_dir_returns_empty(self, tmp_path: Any) -> None:
+        assert nm.list_segments(str(tmp_path / "does_not_exist")) == []
+
+    def test_lists_mp4_files_newest_first(self, tmp_path: Any) -> None:
+        import os
+        import time
+
+        older = tmp_path / "20260101-000000.mp4"
+        older.write_bytes(b"old")
+        time.sleep(0.01)
+        newer = tmp_path / "20260102-000000.mp4"
+        newer.write_bytes(b"newer-data")
+        # A non-mp4 file must be ignored.
+        (tmp_path / "notes.txt").write_text("ignore me")
+
+        segments = nm.list_segments(str(tmp_path))
+        assert [s["name"] for s in segments] == [newer.name, older.name]
+        assert segments[0]["size_bytes"] == os.path.getsize(newer)
+        assert segments[0]["path"] == str(newer)
+
+    def test_ignores_subdirectories(self, tmp_path: Any) -> None:
+        (tmp_path / "subdir.mp4").mkdir()
+        assert nm.list_segments(str(tmp_path)) == []
+
+
+class TestDeleteSegment:
+    def test_deletes_existing_file(self, tmp_path: Any) -> None:
+        f = tmp_path / "20260101-000000.mp4"
+        f.write_bytes(b"data")
+        assert nm.delete_segment(str(tmp_path), f.name) is True
+        assert not f.exists()
+
+    def test_missing_file_returns_false(self, tmp_path: Any) -> None:
+        assert nm.delete_segment(str(tmp_path), "nope.mp4") is False
+
+    def test_rejects_empty_name(self, tmp_path: Any) -> None:
+        assert nm.delete_segment(str(tmp_path), "") is False
+
+    def test_rejects_path_traversal(self, tmp_path: Any) -> None:
+        outside = tmp_path.parent / "escaped.mp4"
+        outside.write_bytes(b"secret")
+        try:
+            assert nm.delete_segment(str(tmp_path), "../escaped.mp4") is False
+            assert outside.exists()
+        finally:
+            outside.unlink(missing_ok=True)
+
+    def test_rejects_embedded_separator(self, tmp_path: Any) -> None:
+        assert nm.delete_segment(str(tmp_path), "sub/dir.mp4") is False
+
+
+class TestAsyncSegmentHelpers:
+    async def test_async_list_segments(self, tmp_path: Any) -> None:
+        f = tmp_path / "20260101-000000.mp4"
+        f.write_bytes(b"data")
+        segments = await nm.async_list_segments(str(tmp_path))
+        assert [s["name"] for s in segments] == [f.name]
+
+    async def test_async_delete_segment(self, tmp_path: Any) -> None:
+        f = tmp_path / "20260101-000000.mp4"
+        f.write_bytes(b"data")
+        assert await nm.async_delete_segment(str(tmp_path), f.name) is True
+        assert not f.exists()

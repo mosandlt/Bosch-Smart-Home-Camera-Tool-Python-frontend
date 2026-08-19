@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.4.3-alpha — family-parity batch
+
+Ground-truth gap audit vs HA v16.1.12. Fix: `unread_events_count` premise
+was stale — `cli_bridge.get_unread_count` already calls the correct live
+endpoint (`GET /v11/video_inputs/{id}` → `numberOfUnreadEvents`), not the
+endpoint HA removed in v16.1.11; no change needed there.
+
+New:
+- **Stream quality selector** (auto/high/low) on the Live Stream section,
+  wired through to the underlying stream request. The CLI bridge only
+  exposes two tiers (not HA's three-tier RCP quality_prefs) — "high" maps
+  to the main stream, "auto"/"low" both map to the sub-stream, documented
+  honestly rather than faking a distinction that doesn't exist.
+- **Recordings browser**: new `list_segments`/`delete_segment` in
+  `nvr_manager.py` (path-traversal guarded) + a Recordings card listing
+  local NVR segments with `ui.video` playback and delete.
+- **Firmware install**: new `cli_bridge.get_firmware_status`/
+  `install_firmware` hitting the same `GET/PUT /v11/video_inputs/{id}/firmware`
+  endpoint the CLI and official app use, behind a confirm dialog quoting
+  HA's own Repairs-flow reboot warning (3-7 minutes).
+
+Deliberately not ported this round (documented reasoning, not oversight):
+cloud-side event mark-read/webhook-resend (no CLI function exists for
+either, and this project stays off cloud-delete territory without one);
+AI Camera Analysis display (HA's `ai_alert_store.py` has no portable
+read surface); Mini-NVR `event_buffered` mode and the Frigate front door
+(bigger architectural scope, flagged as a separate roadmap item).
+
+598 pytest (30 new) / 98.92% coverage (gate 98%) / ruff / mypy --strict
+clean. Not visually verified in a real browser — validated via the
+fake-NiceGUI unit-test harness plus mypy/ruff; static-file video playback
+and the go2rtc quality switch are logically correct on review but not
+confirmed live.
+
+**Note**: per README_TABLES_SYNC, the Integration Comparison table's
+Firmware/Mini-NVR rows were updated only in this repo's README this
+round — a follow-up cross-repo sync pass is needed to keep all 6 repos'
+copies byte-identical again.
+
 ## 0.4.2-alpha — docs-only release
 
 Fixed the MCP row in the shared Integration Comparison table (shares the

@@ -64,6 +64,77 @@ _MIN_CLEAN_RUNTIME_SECONDS = 30.0
 
 StreamResolver = Callable[[], "dict[str, Any] | None"]
 
+# File extensions the continuous-mode segmenter (see `_CameraRecorder._build_cmd`)
+# ever writes — used to filter directory listings in `list_segments`.
+_SEGMENT_EXTENSIONS = (".mp4",)
+
+
+def list_segments(output_dir: str) -> list[dict[str, Any]]:
+    """List recorded MP4 segments in *output_dir*, newest first.
+
+    Pure filesystem read — no ffmpeg/subprocess involved. Returns
+    ``[{"name", "path", "size_bytes", "mtime"}, ...]``; an empty list if the
+    directory doesn't exist or contains nothing recognisable. Never raises —
+    a permission/IO error just yields an empty result (mirrors the
+    best-effort read style of the rest of this module).
+    """
+    try:
+        entries = os.scandir(output_dir)
+    except OSError:
+        return []
+    segments: list[dict[str, Any]] = []
+    with entries:
+        for entry in entries:
+            if not entry.is_file() or not entry.name.lower().endswith(
+                _SEGMENT_EXTENSIONS
+            ):
+                continue
+            try:
+                stat = entry.stat()
+            except OSError:
+                continue
+            segments.append(
+                {
+                    "name": entry.name,
+                    "path": entry.path,
+                    "size_bytes": stat.st_size,
+                    "mtime": stat.st_mtime,
+                }
+            )
+    segments.sort(key=lambda s: s["mtime"], reverse=True)
+    return segments
+
+
+def delete_segment(output_dir: str, name: str) -> bool:
+    """Delete one recorded segment by filename. Returns True on success.
+
+    Path-traversal guard: *name* must resolve to a direct child of
+    *output_dir* (matches the HA sibling repo's ``delete_event`` service
+    path-containment check) — rejects any ``name`` containing a path
+    separator or resolving outside the directory (e.g. ``../``).
+    """
+    if not name or os.sep in name or (os.altsep and os.altsep in name):
+        return False
+    base = os.path.abspath(output_dir)
+    target = os.path.abspath(os.path.join(base, name))
+    if os.path.dirname(target) != base:
+        return False
+    try:
+        os.remove(target)
+    except OSError:
+        return False
+    return True
+
+
+async def async_list_segments(output_dir: str) -> list[dict[str, Any]]:
+    """Async twin of :func:`list_segments` (offloaded to a worker thread)."""
+    return await asyncio.to_thread(list_segments, output_dir)
+
+
+async def async_delete_segment(output_dir: str, name: str) -> bool:
+    """Async twin of :func:`delete_segment` (offloaded to a worker thread)."""
+    return await asyncio.to_thread(delete_segment, output_dir, name)
+
 
 class _CameraRecorder:
     """Owns one camera's continuous-recording ffmpeg process + watcher thread."""

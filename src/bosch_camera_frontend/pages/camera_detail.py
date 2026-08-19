@@ -1,12 +1,15 @@
 """Camera detail page — /camera/{name}
 
-Shows full-size snapshot, live stream (if go2rtc available), camera controls,
-and a table of recent events.
+Shows full-size snapshot, live stream (if go2rtc available, with an auto/
+high/low quality selector) camera controls, local NVR recordings browser
+(list/play/delete), firmware status + confirm-gated install, and a table of
+recent events.
 
-TODO Phase 2: async snapshot loop; FFmpeg/go2rtc HLS pipeline.
-TODO Phase 2: pan slider (CAMERA_360 / pan_limit > 0).
 TODO Phase 3: real-time event feed via FCM push WebSocket.
-TODO Phase 3: event detail view with clip download.
+TODO Phase 3: event detail view. Cloud clip download/per-event delete are
+intentionally NOT implemented — that cloud API surface stays off, per
+Bosch's request (see CLAUDE.md); the "Recordings" section below only
+browses/deletes locally-recorded NVR segments, never cloud events.
 
 Camera light, motion detection, and intrusion detection are wired to the
 live cloud API via cli_bridge (async_get/set_light_override,
@@ -17,8 +20,10 @@ from __future__ import annotations
 
 import base64
 import datetime
+import hashlib
 import os
 import re
+import threading
 from typing import Any
 from urllib.parse import unquote
 
@@ -26,10 +31,52 @@ from nicegui import app, ui
 
 from bosch_camera_frontend.adapters import cli_bridge
 from bosch_camera_frontend.adapters.go2rtc_manager import get_manager
-from bosch_camera_frontend.adapters.nvr_manager import get_manager as get_nvr_manager
+from bosch_camera_frontend.adapters.nvr_manager import (
+    async_delete_segment,
+    async_list_segments,
+    get_manager as get_nvr_manager,
+)
 from bosch_camera_frontend.adapters.stream_session import StreamSession
 from bosch_camera_frontend.components.live_player import LivePlayer
 from bosch_camera_frontend.components.live_snapshot_player import LiveSnapshotPlayer
+
+# Quality preferences the live-view selector offers. Mirrors the HA sibling
+# repo's `quality_prefs.py` concept (auto/high/low), but the CLI bridge's
+# `get_stream_url(hq=...)` only exposes a binary main-stream/sub-stream
+# choice (inst=1 vs inst=2) — there is no CLI-side equivalent of HA's
+# RCP-sourced inst=4 low-bandwidth tier. "low" therefore currently resolves
+# to the same balanced sub-stream as "auto" (hq=False); only "high" (hq=True,
+# inst=1/main stream) is actually distinct. Kept as a 3-way selector for
+# parity/UX consistency and so a future CLI bridge extension has a slot to
+# land in, but the selector's tooltip is explicit about this limitation.
+_STREAM_QUALITIES = ("auto", "high", "low")
+
+
+def _quality_to_hq(quality: str) -> bool:
+    """Map a quality preference to the CLI bridge's `hq` bool (see module doc)."""
+    return quality == "high"
+
+
+# Serve locally-recorded NVR segments as static files so `ui.video` can play
+# them in-browser. One `app.add_static_files` mount per unique recording
+# folder — NiceGUI/Starlette have no "unmount" API, so each folder is only
+# ever mounted once for the life of the process (guarded by this dict).
+_static_mounts: dict[str, str] = {}
+_static_mounts_lock = threading.Lock()
+
+
+def _ensure_static_mount(folder: str) -> str:
+    """Return the URL prefix serving *folder*, mounting it on first use."""
+    abs_folder = os.path.abspath(folder)
+    with _static_mounts_lock:
+        prefix = _static_mounts.get(abs_folder)
+        if prefix is not None:
+            return prefix
+        digest = hashlib.sha256(abs_folder.encode()).hexdigest()[:16]
+        prefix = f"/nvr_recordings/{digest}"
+        app.add_static_files(prefix, abs_folder)
+        _static_mounts[abs_folder] = prefix
+        return prefix
 
 
 def _stream_name(cam_name: str, cam_id: str = "") -> str:
@@ -166,11 +213,31 @@ async def camera_detail_page(name: str) -> None:
 
         # ── Live Stream section ────────────────────────────────────────────
         with ui.expansion("Live Stream", icon="live_tv").classes("w-full"):
+            # Mutable holder so closures below always read the *current*
+            # selection (a plain nonlocal-captured str would freeze at
+            # definition time for callbacks registered before a later change).
+            quality_state: dict[str, str] = {"value": "auto"}
+            _active_stream_session: dict[str, StreamSession | None] = {"session": None}
+
+            with ui.row().classes("items-center gap-2"):
+                ui.label("Quality:").classes("text-sm")
+                quality_select = ui.select(
+                    list(_STREAM_QUALITIES), value="auto"
+                ).classes("w-28")
+                ui.tooltip(
+                    "'high' uses the camera's main stream (inst=1). 'auto' and "
+                    "'low' both currently use the balanced sub-stream (inst=2) "
+                    "— the CLI bridge this frontend talks through doesn't yet "
+                    "expose the further low-bandwidth tier (inst=4) the HA "
+                    "integration's RCP path supports."
+                )
 
             async def _live_frame() -> bytes | None:
-                # Lower-res for the live loop (lighter + faster than the hq still).
                 return await cli_bridge.async_snap_from_proxy(
-                    cam_info, token, hq=False, cfg=cfg
+                    cam_info,
+                    token,
+                    hq=_quality_to_hq(quality_state["value"]),
+                    cfg=cfg,
                 )
 
             live_container = ui.column().classes("w-full")
@@ -187,7 +254,7 @@ async def camera_detail_page(name: str) -> None:
 
             async def _resolve_stream() -> dict[str, object] | None:
                 return await cli_bridge.async_get_stream_url(
-                    cam_info, token, hq=False, cfg=cfg
+                    cam_info, token, hq=_quality_to_hq(quality_state["value"]), cfg=cfg
                 )
 
             async def _setup_live() -> None:
@@ -198,6 +265,7 @@ async def camera_detail_page(name: str) -> None:
                 base URL + stream name. A StreamSession keeps the source fresh
                 against Gen2 credential rotation while the view is open.
                 """
+                live_container.clear()
                 mgr = get_manager()
                 if not mgr.available:
                     _mount_snapshot(
@@ -205,8 +273,9 @@ async def camera_detail_page(name: str) -> None:
                     )
                     return
                 src_name = _stream_name(cam_name, cam_id)
-                session = StreamSession(mgr, _resolve_stream, src_name)
-                if not await session.start():
+                stream_session = StreamSession(mgr, _resolve_stream, src_name)
+                _active_stream_session["session"] = stream_session
+                if not await stream_session.start():
                     _mount_snapshot("Live stream unavailable.")
                     return
                 with live_container:
@@ -219,8 +288,21 @@ async def camera_detail_page(name: str) -> None:
                 )
                 # Keep the go2rtc source fresh ahead of Bosch session/cred rotation,
                 # and free the Bosch session + go2rtc producer when the tab closes.
-                ui.timer(session.refresh_interval, session.refresh)
-                app.on_disconnect(session.stop)
+                ui.timer(stream_session.refresh_interval, stream_session.refresh)
+                app.on_disconnect(stream_session.stop)
+
+            async def _on_quality_change(e: Any) -> None:
+                quality_state["value"] = e.value
+                # Re-resolve the stream at the new quality: stop any running
+                # go2rtc-backed session (a fresh one is created by _setup_live)
+                # and rebuild the live view in place.
+                old_session = _active_stream_session["session"]
+                if old_session is not None:
+                    await old_session.stop()
+                    _active_stream_session["session"] = None
+                await _setup_live()
+
+            quality_select.on_value_change(_on_quality_change)
 
             ui.timer(0.1, _setup_live, once=True)
 
@@ -547,6 +629,74 @@ async def camera_detail_page(name: str) -> None:
                 "dense flat"
             ).classes("mt-2")
 
+        # ── Firmware Update (read status + confirm-gated install) ──────────
+        with ui.card().classes("w-full p-4"):
+            ui.label("Firmware").classes("font-semibold mb-2")
+            firmware_state_label = ui.label("Loading…").classes("text-sm")
+            firmware_install_btn = ui.button(
+                "Install Update", icon="system_update"
+            ).props("dense color=warning")
+            firmware_install_btn.classes("mt-2 hidden")
+
+            with ui.dialog() as firmware_confirm_dialog, ui.card():
+                ui.label("Install firmware update?").classes("font-semibold")
+                firmware_confirm_body = ui.label("").classes("text-sm mt-2")
+                ui.label(
+                    "The camera will reboot and be unreachable for roughly 3-7 minutes."
+                ).classes("text-sm text-amber-700 mt-2")
+                with ui.row().classes("justify-end gap-2 mt-4"):
+                    ui.button("Cancel", on_click=firmware_confirm_dialog.close).props(
+                        "flat"
+                    )
+                    firmware_confirm_install_btn = ui.button(
+                        "Install", color="negative"
+                    ).props("dense")
+
+            async def _load_firmware() -> None:
+                data = await cli_bridge.async_get_firmware_status(session, cam_id)
+                if data is None:
+                    firmware_state_label.set_text(
+                        "Firmware: unavailable (offline or not supported)"
+                    )
+                    firmware_install_btn.classes(add="hidden")
+                    return
+                current = data.get("current", "?")
+                up_to_date = data.get("upToDate")
+                updating = data.get("updating", False)
+                update_target = data.get("update")
+                if updating:
+                    firmware_state_label.set_text(
+                        f"Firmware: {current} — update installing…"
+                    )
+                    firmware_install_btn.classes(add="hidden")
+                elif up_to_date or not update_target:
+                    firmware_state_label.set_text(f"Firmware: {current} (up to date)")
+                    firmware_install_btn.classes(add="hidden")
+                else:
+                    firmware_state_label.set_text(
+                        f"Firmware: {current} — update available: {update_target}"
+                    )
+                    firmware_confirm_body.set_text(
+                        f"Camera '{cam_name}' will update from {current} to "
+                        f"{update_target}."
+                    )
+                    firmware_install_btn.classes(remove="hidden")
+
+            async def _do_install_firmware() -> None:
+                firmware_confirm_dialog.close()
+                ok, err = await cli_bridge.async_install_firmware(session, cam_id)
+                if ok:
+                    ui.notify("Firmware install started", color="info")
+                    firmware_state_label.set_text("Firmware: update installing…")
+                    firmware_install_btn.classes(add="hidden")
+                else:
+                    ui.notify(f"Firmware install failed: {err}", color="negative")
+                    await _load_firmware()
+
+            firmware_install_btn.on_click(firmware_confirm_dialog.open)
+            firmware_confirm_install_btn.on_click(_do_install_firmware)
+            ui.timer(0.2, _load_firmware, once=True)
+
         # ── Lighting Schedule (outdoor Eyes cameras with LED only) ─────────
         if cam_info.get("has_light"):
             with ui.card().classes("w-full p-4"):
@@ -751,6 +901,80 @@ async def camera_detail_page(name: str) -> None:
 
             nvr_switch.on_value_change(_toggle_nvr)
             ui.timer(0.2, _load_nvr_state, once=True)
+
+        # ── Recordings browser (local NVR segments) ──────────────────────────
+        # Lists + plays the MP4 segments the "Local Recording" section above
+        # writes to disk. Purely local filesystem — no Bosch API call. Playback
+        # uses `ui.video` against a one-time `app.add_static_files` mount of the
+        # recording folder (see `_ensure_static_mount`); nothing here reaches
+        # into cloud events (that surface stays untouched — see README /
+        # CLAUDE.md on the download/events API being off-limits per Bosch's
+        # request).
+        with ui.card().classes("w-full p-4"):
+            ui.label("Recordings").classes("font-semibold mb-2")
+            recordings_container = ui.column().classes("w-full gap-1")
+            recordings_player_container = ui.column().classes("w-full")
+
+            def _recordings_folder() -> str:
+                return nvr_folder_input.value or default_nvr_folder
+
+            def _play_recording(url_prefix: str, filename: str) -> None:
+                recordings_player_container.clear()
+                with recordings_player_container:
+                    ui.video(f"{url_prefix}/{filename}").classes("w-full").props(
+                        "controls"
+                    )
+
+            async def _load_recordings() -> None:
+                folder = _recordings_folder()
+                with recordings_container:
+                    recordings_container.clear()
+                    segments = await async_list_segments(folder)
+                    if not segments:
+                        ui.label("No recordings found.").classes(
+                            "text-sm text-gray-400"
+                        )
+                        return
+                    url_prefix = _ensure_static_mount(folder)
+                    for seg in segments:
+                        seg_name = str(seg["name"])
+                        size_mb = float(seg["size_bytes"]) / (1024 * 1024)
+                        ts = datetime.datetime.fromtimestamp(
+                            float(seg["mtime"])
+                        ).strftime("%Y-%m-%d %H:%M:%S")
+                        with ui.row().classes("items-center gap-2 w-full"):
+                            ui.icon("movie", color="grey")
+                            ui.label(f"{ts}  ·  {size_mb:.1f} MB").classes(
+                                "text-sm flex-grow"
+                            )
+
+                            def _play(
+                                name: str = seg_name, prefix: str = url_prefix
+                            ) -> None:
+                                _play_recording(prefix, name)
+
+                            ui.button(icon="play_arrow", on_click=_play).props(
+                                "dense flat"
+                            )
+
+                            async def _delete(name: str = seg_name) -> None:
+                                ok = await async_delete_segment(folder, name)
+                                if ok:
+                                    ui.notify("Recording deleted", color="info")
+                                    await _load_recordings()
+                                else:
+                                    ui.notify(
+                                        "Failed to delete recording", color="negative"
+                                    )
+
+                            ui.button(icon="delete", on_click=_delete).props(
+                                "dense flat color=negative"
+                            )
+
+            ui.button(
+                "Refresh Recordings", icon="refresh", on_click=_load_recordings
+            ).props("dense flat")
+            ui.timer(0.4, _load_recordings, once=True)
 
         # ── Siren / Alarm (Gen2 Indoor II only) ─────────────────────────────
         if cam_info.get("model") == "HOME_Eyes_Indoor":
