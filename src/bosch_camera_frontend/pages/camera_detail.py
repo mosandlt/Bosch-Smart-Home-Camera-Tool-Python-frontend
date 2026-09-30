@@ -30,6 +30,7 @@ from urllib.parse import unquote
 from nicegui import app, ui
 
 from bosch_camera_frontend.adapters import cli_bridge
+from bosch_camera_frontend.adapters import local_data_interface as ldi
 from bosch_camera_frontend.adapters.go2rtc_manager import get_manager
 from bosch_camera_frontend.adapters.nvr_manager import (
     async_delete_segment,
@@ -240,6 +241,30 @@ async def camera_detail_page(name: str) -> None:
                     cfg=cfg,
                 )
 
+            ldi_label = ui.label("").classes("text-xs text-gray-500 mt-1 hidden")
+            ldi_loaded = {"done": False}
+
+            async def _refresh_ldi_status() -> None:
+                """Fetch the local data interface status once per page view."""
+                if ldi_loaded["done"]:
+                    return
+                ldi_loaded["done"] = True
+                try:
+                    entry = await cli_bridge.async_get_local_data_status(
+                        session, cam_info
+                    )
+                except Exception:  # noqa: BLE001 - status must never break live view
+                    entry = ldi.last_status(cam_id)
+                state = entry.get("state") if entry else None
+                if state is None:
+                    return
+                if ldi.needs_password(cam_id, cam_info):
+                    text = f"Local data interface: active. {ldi.MSG_NEED_PASSWORD}"
+                else:
+                    text = f"Local data interface: {state}"
+                ldi_label.set_text(text)
+                ldi_label.classes(remove="hidden")
+
             live_container = ui.column().classes("w-full")
             live_status = ui.label("").classes("text-xs text-gray-400 mt-2")
 
@@ -253,6 +278,9 @@ async def camera_detail_page(name: str) -> None:
                 )
 
             async def _resolve_stream() -> dict[str, object] | None:
+                if ldi.local_source_wanted(cam_id, cam_info):
+                    # Fail closed: no cloud session for a local-only camera.
+                    return ldi.resolve_local_source(cam_info)
                 return await cli_bridge.async_get_stream_url(
                     cam_info, token, hq=_quality_to_hq(quality_state["value"]), cfg=cfg
                 )
@@ -266,7 +294,15 @@ async def camera_detail_page(name: str) -> None:
                 against Gen2 credential rotation while the view is open.
                 """
                 live_container.clear()
+                await _refresh_ldi_status()
+                local_only = ldi.local_source_wanted(cam_id, cam_info)
                 mgr = get_manager()
+                if local_only and not mgr.available:
+                    live_status.set_text(
+                        "Local data interface: go2rtc is required to read the "
+                        "camera locally (no cloud fallback)."
+                    )
+                    return
                 if not mgr.available:
                     _mount_snapshot(
                         "go2rtc not installed (brew install go2rtc for WebRTC + audio)."
@@ -276,6 +312,9 @@ async def camera_detail_page(name: str) -> None:
                 stream_session = StreamSession(mgr, _resolve_stream, src_name)
                 _active_stream_session["session"] = stream_session
                 if not await stream_session.start():
+                    if local_only:
+                        live_status.set_text(ldi.local_failure_message(cam_info))
+                        return
                     _mount_snapshot("Live stream unavailable.")
                     return
                 with live_container:
@@ -848,6 +887,8 @@ async def camera_detail_page(name: str) -> None:
             def _nvr_resolver() -> dict[str, Any] | None:
                 # SYNC on purpose — runs on the NVRManager watcher thread, not
                 # the event loop (see nvr_manager.StreamResolver contract).
+                if ldi.local_source_wanted(cam_id, cam_info):
+                    return ldi.resolve_local_source(cam_info)
                 return cli_bridge.get_stream_url(cam_info, token, hq=False, cfg=cfg)
 
             async def _load_nvr_state() -> None:

@@ -167,6 +167,7 @@ def get_cameras(cfg: ConfigDict, session: "requests.Session") -> dict[str, Camer
                 "local_ip": prev.get("local_ip", ""),
                 "local_username": prev.get("local_username", ""),
                 "local_password": prev.get("local_password", ""),
+                "local_data_password": prev.get("local_data_password", ""),
                 "has_light": prev.get("has_light", False),
                 "pan_limit": prev.get("pan_limit", 0),
                 "nvr_recording_folder": prev.get("nvr_recording_folder", ""),
@@ -971,6 +972,19 @@ def install_firmware(
     return False, _map_write_error(r)
 
 
+def get_local_data_status(
+    session: "requests.Session", cam_info: CameraDict
+) -> dict[str, Any] | None:
+    """Local data interface status ({state, username?}); None if not applicable.
+
+    Read-only GET; only Gen2 cameras on a new-enough firmware are queried and a
+    failed lookup keeps the last known value.
+    """
+    from bosch_camera_frontend.adapters import local_data_interface as ldi
+
+    return ldi.fetch_status(session, cam_info, _bc().CLOUD_API)
+
+
 # ---------------------------------------------------------------------------
 # Async twins — run the blocking call above in a worker thread.
 # Use these from `async def` NiceGUI handlers so the event loop stays free.
@@ -1060,6 +1074,12 @@ async def async_get_unread_count(
     session: "requests.Session", cam_id: str
 ) -> int | None:
     return await _to_thread(get_unread_count, session, cam_id)
+
+
+async def async_get_local_data_status(
+    session: "requests.Session", cam_info: CameraDict
+) -> dict[str, Any] | None:
+    return await _to_thread(get_local_data_status, session, cam_info)
 
 
 async def async_get_firmware_status(

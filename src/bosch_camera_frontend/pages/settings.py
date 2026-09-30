@@ -11,10 +11,13 @@ TODO Phase 4: dark mode toggle.
 
 from __future__ import annotations
 
+from typing import Any
+
 from nicegui import app, ui
 
 from bosch_camera_frontend import __version__
 from bosch_camera_frontend.adapters import cli_bridge
+from bosch_camera_frontend.adapters import local_data_interface as ldi
 
 
 @ui.page("/settings")
@@ -160,6 +163,26 @@ async def settings_page() -> None:
                         "No config loaded — cannot save language", color="warning"
                     )
 
+        # ── Local data interface section ───────────────────────────────────
+        with ui.card().classes("w-full p-4"):
+            ui.label("Local data interface").classes("font-semibold text-base mb-2")
+            ui.label(
+                "Password printed on the camera's sticker. When the interface is "
+                "active on the camera, live video is read locally (video only, "
+                "no audio) instead of through the cloud."
+            ).classes("text-xs text-gray-500 mb-2")
+            gen2_cams = {
+                name: info
+                for name, info in (cfg.get("cameras", {}) if cfg else {}).items()
+                if ldi.is_gen2(info)
+            }
+            if not gen2_cams:
+                ui.label("No supported cameras in config.").classes(
+                    "text-sm text-gray-500"
+                )
+            for cam_name, cam_entry in gen2_cams.items():
+                _build_ldi_row(cam_name, cam_entry)
+
         # ── About section ─────────────────────────────────────────────────
         with ui.card().classes("w-full p-4"):
             ui.label("About").classes("font-semibold text-base mb-2")
@@ -177,3 +200,31 @@ async def settings_page() -> None:
                 'target="_blank" class="text-blue-600 underline text-xs">GitHub Repository</a>',
                 sanitize=False,
             )
+
+
+def _build_ldi_row(cam_name: str, cam_entry: dict[str, Any]) -> None:
+    """One camera's masked password field; the stored value is never sent back."""
+    cfg = app.storage.general.get("cfg")
+    with ui.row().classes("items-center gap-2 w-full"):
+        ui.label(cam_name).classes("text-sm w-40")
+        field = ui.input(
+            label="Password",
+            password=True,
+            placeholder="saved" if ldi.stored_password(cam_entry) else "not set",
+        ).classes("flex-grow")
+
+        def _save() -> None:
+            raw = str(field.value or "").strip()
+            if raw and ldi.valid_password(raw) is None:
+                ui.notify("Invalid password format", color="negative")
+                return
+            cam_entry[ldi.LDI_PASSWORD_KEY] = raw
+            try:
+                cli_bridge.save_config(cfg or {})
+            except Exception:
+                ui.notify("Could not save config", color="negative")
+                return
+            field.set_value("")
+            ui.notify("Password saved" if raw else "Password cleared", color="positive")
+
+        ui.button("Save", on_click=_save).props("outline dense")

@@ -163,6 +163,16 @@ expiry; go2rtc swaps the source in place and the player rides the brief blip.
 
 ---
 
+### Local data interface
+
+Gen2 cameras on firmware 9.40.105 or newer can offer a local data interface.
+The camera detail page shows its status (read-only). After entering the
+password from the camera's sticker under **Settings**, live view and local
+recording read the camera directly on the LAN (video only, no audio) through
+the single go2rtc stream, with no cloud stream session and no cloud fallback.
+The camera closes that stream while privacy mode is on. Without a password
+nothing changes.
+
 ## Supported Cameras
 
 Same camera lineup as the rest of the Bosch Smart Home Camera Tool family — exactly four models:

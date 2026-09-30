@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+New:
+- **Local data interface**: read-only status badge on the camera detail page
+  (Gen2 cameras on firmware 9.40.105 or newer only; a failed lookup keeps
+  the last known value). A per-camera password can be stored under
+  Settings (masked, never shown again). When the interface is active and a
+  password is set, live view and local recording read the camera directly
+  at `rtsps://localuser:<password>@<lan-ip>:9554/live` (video only, no audio;
+  the camera closes the stream while privacy mode is on) through the single
+  go2rtc stream, without any cloud stream session and without cloud
+  fallback. Without a password, or when inactive, behavior is unchanged.
+  The password never appears in logs or UI text.
+
 ## 0.4.3-alpha — family-parity batch
 
 Ground-truth gap audit vs HA v16.1.12. Fix: `unread_events_count` premise

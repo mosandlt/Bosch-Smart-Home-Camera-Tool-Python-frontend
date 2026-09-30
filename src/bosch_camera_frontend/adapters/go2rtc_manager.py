@@ -49,6 +49,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from bosch_camera_frontend.adapters.local_data_interface import redact_urls
+
 _LOGGER = logging.getLogger(__name__)
 
 # Bootstrap go2rtc config: API + WebRTC listeners, CORS open, NO streams (streams
@@ -242,7 +244,9 @@ class Go2rtcManager:
         try:
             status, body = self._api_request(f"/api/streams?{qs}", method="PUT")
         except urllib.error.URLError as exc:
-            _LOGGER.error("go2rtc add_stream(%s) failed: %s", name, exc)
+            _LOGGER.error(
+                "go2rtc add_stream(%s) failed: %s", name, redact_urls(str(exc))
+            )
             return False
 
         # 2xx = clean success. HTTP 400 + "yaml:" body = SOFT success: the stream
@@ -250,7 +254,12 @@ class Go2rtcManager:
         # with a read-only/temp config). Anything else is a real failure.
         soft_yaml_ok = status == 400 and body.lstrip().startswith(b"yaml:")
         if not (200 <= status < 300 or soft_yaml_ok):
-            _LOGGER.error("go2rtc add_stream(%s) HTTP %d: %r", name, status, body[:120])
+            _LOGGER.error(
+                "go2rtc add_stream(%s) HTTP %d: %r",
+                name,
+                status,
+                redact_urls(body[:120].decode("utf-8", errors="replace")),
+            )
             return False
 
         return self.stream_exists(name)
