@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.0-alpha — local data interface
+
 New:
 - **Local data interface**: read-only status badge on the camera detail page
   (Gen2 cameras on firmware 9.40.105 or newer only; a failed lookup keeps
