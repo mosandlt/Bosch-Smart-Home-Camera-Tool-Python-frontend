@@ -280,7 +280,9 @@ async def camera_detail_page(name: str) -> None:
             async def _resolve_stream() -> dict[str, object] | None:
                 if ldi.local_source_wanted(cam_id, cam_info):
                     # Fail closed: no cloud session for a local-only camera.
-                    return ldi.resolve_local_source(cam_info)
+                    return ldi.resolve_local_source(
+                        cam_info, quality=quality_state["value"]
+                    )
                 return await cli_bridge.async_get_stream_url(
                     cam_info, token, hq=_quality_to_hq(quality_state["value"]), cfg=cfg
                 )
@@ -888,7 +890,8 @@ async def camera_detail_page(name: str) -> None:
                 # SYNC on purpose — runs on the NVRManager watcher thread, not
                 # the event loop (see nvr_manager.StreamResolver contract).
                 if ldi.local_source_wanted(cam_id, cam_info):
-                    return ldi.resolve_local_source(cam_info)
+                    # Low instance (mirrors hq=False below), with audio.
+                    return ldi.resolve_local_source(cam_info, quality="low")
                 return cli_bridge.get_stream_url(cam_info, token, hq=False, cfg=cfg)
 
             async def _load_nvr_state() -> None:

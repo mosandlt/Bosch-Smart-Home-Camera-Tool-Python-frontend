@@ -168,8 +168,8 @@ async def settings_page() -> None:
             ui.label("Local data interface").classes("font-semibold text-base mb-2")
             ui.label(
                 "Password printed on the camera's sticker. When the interface is "
-                "active on the camera, live video is read locally (video only, "
-                "no audio) instead of through the cloud."
+                "active on the camera, live video (with sound) is read "
+                "locally in the selected quality instead of through the cloud."
             ).classes("text-xs text-gray-500 mb-2")
             gen2_cams = {
                 name: info

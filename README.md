@@ -168,7 +168,7 @@ expiry; go2rtc swaps the source in place and the player rides the brief blip.
 Gen2 cameras on firmware 9.40.105 or newer can offer a local data interface.
 The camera detail page shows its status (read-only). After entering the
 password from the camera's sticker under **Settings**, live view and local
-recording read the camera directly on the LAN (video only, no audio) through
+recording read the camera directly on the LAN (with sound, in the selected quality: high or low) through
 the single go2rtc stream, with no cloud stream session and no cloud fallback.
 The camera closes that stream while privacy mode is on. Without a password
 nothing changes.

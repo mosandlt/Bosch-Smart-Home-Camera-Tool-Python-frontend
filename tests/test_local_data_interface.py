@@ -231,16 +231,43 @@ class TestValidation:
 class TestSource:
     def test_url_shape_and_quoting(self, ldi: Any) -> None:
         assert ldi.source_url("10.0.0.5", PW) == (
-            "rtsps://localuser:test-pw@10.0.0.5:9554/live"
+            "rtsps://localuser:test-pw@10.0.0.5:9554/rtsp_tunnel?line=1&inst=1&enableaudio=1"
         )
         assert ldi.source_url("10.0.0.5", "a@b/c:d#") == (
-            "rtsps://localuser:a%40b%2Fc%3Ad%23@10.0.0.5:9554/live"
+            "rtsps://localuser:a%40b%2Fc%3Ad%23@10.0.0.5:9554/rtsp_tunnel?line=1&inst=1&enableaudio=1"
         )
+
+    @pytest.mark.parametrize(
+        ("quality", "audio", "tail"),
+        [
+            ("high", True, "inst=1&enableaudio=1"),
+            ("high", False, "inst=1&enableaudio=0"),
+            ("low", True, "inst=2&enableaudio=1"),
+            ("low", False, "inst=2&enableaudio=0"),
+            ("auto", True, "inst=1&enableaudio=1"),
+            ("garbage", True, "inst=1&enableaudio=1"),
+            (None, False, "inst=1&enableaudio=0"),
+        ],
+    )
+    def test_quality_audio_modes(
+        self, ldi: Any, quality: Any, audio: bool, tail: str
+    ) -> None:
+        url = ldi.source_url("10.0.0.5", PW, quality=quality, audio=audio)
+        assert url.endswith(f"/rtsp_tunnel?line=1&{tail}")
+        info = ldi.resolve_local_source(
+            _cam(local_data_password=PW), quality=quality, audio=audio
+        )
+        assert info["url"] == url
+
+    def test_special_char_password_encoded_with_query(self, ldi: Any) -> None:
+        url = ldi.source_url("10.0.0.5", "a?b&c=d#e")
+        assert "a%3Fb%26c%3Dd%23e@" in url
+        assert url.count("?") == 1
 
     def test_resolve_ok(self, ldi: Any) -> None:
         info = ldi.resolve_local_source(_cam(local_data_password=PW))
         assert info == {
-            "url": "rtsps://localuser:test-pw@10.0.0.5:9554/live",
+            "url": "rtsps://localuser:test-pw@10.0.0.5:9554/rtsp_tunnel?line=1&inst=1&enableaudio=1",
             "type": "LOCAL_DATA",
         }
 
@@ -286,10 +313,12 @@ class TestSource:
 
 class TestRedaction:
     def test_redact(self, ldi: Any) -> None:
-        text = "boom rtspx://localuser:test-pw@10.0.0.5:9554/live failed"
+        text = "boom rtspx://localuser:test-pw@10.0.0.5:9554/rtsp_tunnel?line=1&inst=1&enableaudio=1 failed"
         out = ldi.redact_urls(text)
         assert PW not in out
-        assert "rtspx://***@10.0.0.5:9554/live" in out
+        assert (
+            "rtspx://***@10.0.0.5:9554/rtsp_tunnel?line=1&inst=1&enableaudio=1" in out
+        )
 
     def test_go2rtc_add_stream_logs_no_password(
         self, ldi: Any, caplog: pytest.LogCaptureFixture

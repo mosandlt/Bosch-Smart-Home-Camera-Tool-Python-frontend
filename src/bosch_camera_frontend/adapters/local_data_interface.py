@@ -8,7 +8,8 @@ Any other status / network error / malformed body keeps the last known value.
 Only Gen2 cameras on firmware >= LDI_MIN_FIRMWARE are queried.
 
 When the interface is active and a password is stored for the camera, the
-stream is read straight from the camera (video only, no cloud session).
+stream is read straight from the camera (no cloud session): documented tunnel
+path with a quality instance (1 high, 2 low) and optional AAC audio.
 The password only ever appears inside the source URL handed to go2rtc/ffmpeg;
 use :func:`redact_urls` before logging anything that could contain it.
 """
@@ -29,7 +30,9 @@ LDI_ENDPOINT = "onvif_user"
 LDI_MIN_FIRMWARE: tuple[int, ...] = (9, 40, 105)
 LDI_USER = "localuser"
 LDI_RTSP_PORT = 9554
-LDI_STREAM_PATH = "/live"
+LDI_STREAM_PATH = "/rtsp_tunnel"
+LDI_INST_HIGH = 1
+LDI_INST_LOW = 2
 LDI_PASSWORD_KEY = "local_data_password"
 LDI_SOURCE_TYPE = "LOCAL_DATA"
 
@@ -158,11 +161,19 @@ def stored_password(cam_info: dict[str, Any]) -> str | None:
     return valid_password(cam_info.get(LDI_PASSWORD_KEY))
 
 
-def source_url(ip: str, password: str) -> str:
+def inst_for_quality(quality: object) -> int:
+    """Stream instance for a quality preference: low -> 2, anything else -> 1."""
+    return LDI_INST_LOW if quality == "low" else LDI_INST_HIGH
+
+
+def source_url(
+    ip: str, password: str, *, quality: object = "high", audio: bool = True
+) -> str:
     """Stream source URL for the camera; the password is percent-encoded."""
     return (
         f"rtsps://{LDI_USER}:{quote(password, safe='')}@{ip}:{LDI_RTSP_PORT}"
-        f"{LDI_STREAM_PATH}"
+        f"{LDI_STREAM_PATH}?line=1&inst={inst_for_quality(quality)}"
+        f"&enableaudio={1 if audio else 0}"
     )
 
 
@@ -191,7 +202,9 @@ def needs_password(cam_id: str, cam_info: dict[str, Any]) -> bool:
     )
 
 
-def resolve_local_source(cam_info: dict[str, Any]) -> dict[str, object] | None:
+def resolve_local_source(
+    cam_info: dict[str, Any], quality: object = "high", audio: bool = True
+) -> dict[str, object] | None:
     """Stream-info dict for the local source, None when it cannot be built.
 
     Same shape as the cloud resolver's result; never contacts the cloud.
@@ -200,7 +213,10 @@ def resolve_local_source(cam_info: dict[str, Any]) -> dict[str, object] | None:
     ip = valid_lan_ip(cam_info.get("local_ip"))
     if password is None or ip is None:
         return None
-    return {"url": source_url(ip, password), "type": LDI_SOURCE_TYPE}
+    return {
+        "url": source_url(ip, password, quality=quality, audio=audio),
+        "type": LDI_SOURCE_TYPE,
+    }
 
 
 def local_failure_message(cam_info: dict[str, Any]) -> str:

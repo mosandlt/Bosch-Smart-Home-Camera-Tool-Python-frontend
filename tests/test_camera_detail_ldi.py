@@ -15,7 +15,9 @@ TOKEN = "header.payload.signature"
 PW = "test-pw"
 CAM_ID = "11111111-2222-3333-4444-555555555555"
 CLOUD_URL = "rtsps://proxy.invalid:443/abc/rtsp_tunnel"
-LOCAL_URL = "rtsps://localuser:test-pw@10.0.0.5:9554/live"
+LOCAL_URL = (
+    "rtsps://localuser:test-pw@10.0.0.5:9554/rtsp_tunnel?line=1&inst=1&enableaudio=1"
+)
 
 
 def _cam(**over: Any) -> dict[str, Any]:
@@ -309,7 +311,11 @@ class TestNvrSource:
         rig, resolver = await self._resolver(
             fake_nicegui, monkeypatch, _cam(local_data_password=PW), ACTIVE
         )
-        assert resolver() == {"url": LOCAL_URL, "type": "LOCAL_DATA"}
+        # NVR records the low instance (mirrors the cloud path's hq=False).
+        assert resolver() == {
+            "url": LOCAL_URL.replace("inst=1", "inst=2"),
+            "type": "LOCAL_DATA",
+        }
         rig.bridge.get_stream_url.assert_not_called()
 
     async def test_fail_closed_with_bad_ip(

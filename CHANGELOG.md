@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.5.1-alpha - 2026-09-30
+
+Fixed:
+- Local data interface stream now uses `/rtsp_tunnel?line=1&inst=<1|2>&enableaudio=1` instead of `/live`: live view and local recording get sound (AAC) and follow the quality selector (high = inst 1, low = inst 2; default high).
+
 ## 0.5.0-alpha — local data interface
 
 New:
@@ -10,8 +15,8 @@ New:
   the last known value). A per-camera password can be stored under
   Settings (masked, never shown again). When the interface is active and a
   password is set, live view and local recording read the camera directly
-  at `rtsps://localuser:<password>@<lan-ip>:9554/live` (video only, no audio;
-  the camera closes the stream while privacy mode is on) through the single
+  at `rtsps://localuser:<password>@<lan-ip>:9554` (see 0.5.1-alpha for the
+  stream path; the camera closes the stream while privacy mode is on) through the single
   go2rtc stream, without any cloud stream session and without cloud
   fallback. Without a password, or when inactive, behavior is unchanged.
   The password never appears in logs or UI text.
